@@ -15,6 +15,13 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "FERRAPP - Optimizador de Ferralla",
   description: "Despiece y optimización de cortes de ferralla para estructuras",
+  manifest: "/manifest.json",
+  themeColor: "#f59e0b",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "black-translucent",
+    title: "FERRAPP",
+  },
 };
 
 export default function RootLayout({
