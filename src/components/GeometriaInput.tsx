@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect } from "react";
 import {
   CategoriaElemento,
   FormaElemento,
@@ -40,6 +41,27 @@ export default function GeometriaInput({
   const tipo = getTipoGeometria(categoria, subtipo);
   const g = geometria;
 
+  // Migrar L antigua (4 lados) a nueva (6 lados perimetrales)
+  useEffect(() => {
+    if (g.forma === "l" && tipo === "superficie" && g.lados.length < 6) {
+      const nombres = getLadosSuperficie("l");
+      const prevLargo = g.lados[0]?.longitud || 10;
+      const prevAncho = g.lados[1]?.longitud || 8;
+      onGeometriaChange({
+        ...g,
+        lados: [
+          { nombre: nombres[0], longitud: prevLargo },
+          { nombre: nombres[1], longitud: +(prevAncho * 0.5).toFixed(1) },
+          { nombre: nombres[2], longitud: +(prevLargo * 0.5).toFixed(1) },
+          { nombre: nombres[3], longitud: +(prevAncho * 0.5).toFixed(1) },
+          { nombre: nombres[4], longitud: +(prevLargo * 0.5).toFixed(1) },
+          { nombre: nombres[5], longitud: prevAncho },
+        ],
+      });
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [g.forma, g.lados.length]);
+
   const updateField = (field: Partial<GeometriaElemento>) => {
     onGeometriaChange({ ...g, ...field });
   };
@@ -63,10 +85,26 @@ export default function GeometriaInput({
   // Cambiar forma para superficies
   const cambiarFormaSuperficie = (forma: FormaElemento) => {
     const nombres = getLadosSuperficie(forma);
-    const lados: LadoGeometria[] = nombres.map((nombre, i) => ({
-      nombre,
-      longitud: g.lados[i]?.longitud || 5,
-    }));
+    let lados: LadoGeometria[];
+
+    if (forma === "l" && g.forma !== "l") {
+      // Al cambiar a L: crear 6 lados perimetrales coherentes
+      const prevLargo = g.lados[0]?.longitud || 10;
+      const prevAncho = g.lados[1]?.longitud || 8;
+      lados = [
+        { nombre: nombres[0], longitud: prevLargo },                            // Superior (ancho total)
+        { nombre: nombres[1], longitud: +(prevAncho * 0.5).toFixed(1) },        // Derecho (alto parcial)
+        { nombre: nombres[2], longitud: +(prevLargo * 0.5).toFixed(1) },        // Entrante H
+        { nombre: nombres[3], longitud: +(prevAncho * 0.5).toFixed(1) },        // Entrante V
+        { nombre: nombres[4], longitud: +(prevLargo * 0.5).toFixed(1) },        // Inferior (ancho parcial)
+        { nombre: nombres[5], longitud: prevAncho },                            // Izquierdo (alto total)
+      ];
+    } else {
+      lados = nombres.map((nombre, i) => ({
+        nombre,
+        longitud: g.lados[i]?.longitud || 5,
+      }));
+    }
     onGeometriaChange({ ...g, forma, lados });
   };
 
@@ -150,8 +188,45 @@ export default function GeometriaInput({
         </div>
       )}
 
-      {/* SUPERFICIE: zonas agrupadas */}
-      {tipo === "superficie" && (
+      {/* SUPERFICIE L: 6 lados perimetrales individuales */}
+      {tipo === "superficie" && g.forma === "l" && (
+        <div className="space-y-2">
+          {/* Diagrama mini + inputs */}
+          <div className="flex gap-3">
+            {/* Mini diagrama L */}
+            <svg viewBox="0 0 100 90" className="w-24 h-20 shrink-0 text-accent/40">
+              <path d="M 5,5 L 95,5 L 95,40 L 50,40 L 50,85 L 5,85 Z"
+                fill="none" stroke="currentColor" strokeWidth="2" />
+              <text x="50" y="3" textAnchor="middle" fontSize="7" fill="#f59e0b">Sup</text>
+              <text x="98" y="24" textAnchor="start" fontSize="7" fill="#f59e0b">Der</text>
+              <text x="73" y="38" textAnchor="middle" fontSize="6" fill="#f59e0b">Ent.H</text>
+              <text x="52" y="64" textAnchor="start" fontSize="6" fill="#f59e0b">Ent.V</text>
+              <text x="28" y="88" textAnchor="middle" fontSize="7" fill="#f59e0b">Inf</text>
+              <text x="3" y="48" textAnchor="end" fontSize="7" fill="#f59e0b" transform="rotate(-90,3,48)">Izq</text>
+            </svg>
+            {/* 6 inputs en grid 3x2 */}
+            <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 flex-1">
+              {g.lados.map((lado, idx) => (
+                <div key={idx} className="flex items-center gap-1">
+                  <label className="text-xs text-gray-400 w-16 shrink-0">{lado.nombre}:</label>
+                  <input
+                    type="number"
+                    value={lado.longitud}
+                    onChange={(e) => updateLado(idx, parseFloat(e.target.value) || 0)}
+                    step={0.1}
+                    min={0.1}
+                    className="bg-surface-light border border-border rounded px-2 py-1 text-sm w-16 text-foreground focus:outline-none focus:border-accent"
+                  />
+                  <span className="text-xs text-gray-500">m</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* SUPERFICIE rectangular/U: zonas agrupadas */}
+      {tipo === "superficie" && g.forma !== "l" && (
         <div className="space-y-2">
           {getZonasSuperficie().map((zona, zIdx) => {
             const nombresZona = getNombresZonaSuperficie(g.forma);
@@ -265,8 +340,21 @@ export default function GeometriaInput({
         <span className="text-xs text-gray-500">cm</span>
       </div>
 
-      {/* Info preview */}
-      {tipo === "superficie" && g.lados.length >= 2 && (
+      {/* Info preview — L con 6 lados */}
+      {tipo === "superficie" && g.forma === "l" && g.lados.length >= 6 && (() => {
+        const esp = g.espaciado || 0.20;
+        const sup = g.lados[0].longitud, der = g.lados[1].longitud;
+        const entV = g.lados[3].longitud, inf = g.lados[4].longitud;
+        return (
+          <div className="text-[10px] text-gray-600">
+            <span>Zona sup: {sup}m x {Math.round(der / esp)}uds + {der}m x {Math.round(sup / esp)}uds</span>
+            <span> | Zona inf: {inf}m x {Math.round(entV / esp)}uds + {entV}m x {Math.round(inf / esp)}uds</span>
+            <span> (por capa)</span>
+          </div>
+        );
+      })()}
+      {/* Info preview — rectangular/U */}
+      {tipo === "superficie" && g.forma !== "l" && g.lados.length >= 2 && (
         <div className="text-[10px] text-gray-600">
           {getZonasSuperficie().map((z, i) => {
             const esp = g.espaciado || 0.20;

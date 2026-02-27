@@ -72,16 +72,27 @@ function generarBarrasSuperficie(g: GeometriaElemento, subtipo?: string): BarraB
   const diam = getDiametrosPlantilla(subtipo);
   const barras: BarraBase[] = [];
 
-  // Extraer zonas rectangulares: cada par de lados (largo, ancho) es una zona
+  // Extraer zonas rectangulares desde los lados
   interface Zona { largo: number; ancho: number; }
   const zonas: Zona[] = [];
-  for (let i = 0; i < g.lados.length; i += 2) {
-    zonas.push({
-      largo: g.lados[i]?.longitud || 5,
-      ancho: g.lados[i + 1]?.longitud || g.lados[i]?.longitud || 5,
-    });
+
+  if (g.forma === "l" && g.lados.length >= 6) {
+    // L con 6 lados perimetrales → 2 zonas rectangulares
+    // [0]=Superior, [1]=Derecho, [2]=Entrante H, [3]=Entrante V, [4]=Inferior, [5]=Izquierdo
+    // Zona sup: Superior × Derecho (franja ancha superior)
+    zonas.push({ largo: g.lados[0].longitud, ancho: g.lados[1].longitud });
+    // Zona inf: Inferior × Entrante V (franja estrecha inferior)
+    zonas.push({ largo: g.lados[4].longitud, ancho: g.lados[3].longitud });
+  } else {
+    // Rectangular, U, etc: cada par (largo, ancho) es una zona
+    for (let i = 0; i < g.lados.length; i += 2) {
+      zonas.push({
+        largo: g.lados[i]?.longitud || 5,
+        ancho: g.lados[i + 1]?.longitud || g.lados[i]?.longitud || 5,
+      });
+    }
+    if (zonas.length === 0) zonas.push({ largo: 5, ancho: 5 });
   }
-  if (zonas.length === 0) zonas.push({ largo: 5, ancho: 5 });
 
   const multiZona = zonas.length > 1;
   const tieneSuper = !subtipo || !subtipo.includes("zapata_aislada");
@@ -488,7 +499,7 @@ export function getLadosForma(forma: FormaElemento): string[] {
 export function getLadosSuperficie(forma: FormaElemento): string[] {
   switch (forma) {
     case "rectangular": return ["Largo", "Ancho"];
-    case "l": return ["Ala 1 Largo", "Ala 1 Ancho", "Ala 2 Largo", "Ala 2 Ancho"];
+    case "l": return ["Superior", "Derecho", "Entrante H", "Entrante V", "Inferior", "Izquierdo"];
     case "u": return ["Ala izq Largo", "Ala izq Ancho", "Centro Largo", "Centro Ancho", "Ala der Largo", "Ala der Ancho"];
     default: return ["Largo", "Ancho"];
   }
