@@ -153,6 +153,13 @@ export interface LadoGeometria {
   longitud: number;  // metros
 }
 
+/** Hueco rectangular en una superficie (escalera, ascensor, patio, etc.) */
+export interface Hueco {
+  nombre: string;   // "Escalera", "Ascensor", "Patio"
+  largo: number;    // metros
+  ancho: number;    // metros
+}
+
 export interface GeometriaElemento {
   forma: FormaElemento;
   lados: LadoGeometria[];     // lados del elemento
@@ -160,6 +167,8 @@ export interface GeometriaElemento {
   espaciado?: number;         // separacion entre barras (default 0.20)
   seccionAncho?: number;      // ancho seccion (vigas, pilares)
   seccionAlto?: number;       // alto seccion (vigas, pilares)
+  anchoZuncho?: number;       // ancho zuncho perimetral (metros), reticular
+  huecos?: Hueco[];           // huecos rectangulares (escalera, ascensor, etc.)
 }
 
 /** Que tipo de geometria usa cada categoria */

@@ -1,12 +1,15 @@
 "use client";
 
-import { ResultadoDespieceExtendido, PESO_POR_METRO } from "@/lib/types";
+import { ResultadoDespieceExtendido, PESO_POR_METRO, GeometriaElemento, CategoriaElemento } from "@/lib/types";
 
 interface VistaImpresionProps {
   resultado: ResultadoDespieceExtendido;
   longitudBarraComercial: number;
   nombreElemento: string;
   nombreProyecto: string;
+  geometria?: GeometriaElemento;
+  categoria?: CategoriaElemento;
+  subtipo?: string;
 }
 
 export default function VistaImpresion({
@@ -14,6 +17,9 @@ export default function VistaImpresion({
   longitudBarraComercial,
   nombreElemento,
   nombreProyecto,
+  geometria,
+  categoria,
+  subtipo,
 }: VistaImpresionProps) {
   const imprimir = () => {
     const ventana = window.open("", "_blank");
@@ -58,6 +64,12 @@ export default function VistaImpresion({
   .header { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 3px solid #000; padding-bottom: 8px; margin-bottom: 10px; }
   .header-right { text-align: right; font-size: 10px; color: #555; }
 
+  .geometria { background: #f8f8f8; border: 1px solid #ddd; border-radius: 4px; padding: 6px 10px; margin-bottom: 10px; font-size: 10px; }
+  .geometria strong { font-size: 11px; }
+  .geometria .geo-row { margin: 2px 0; }
+  .geometria .geo-label { color: #666; }
+  .geometria .geo-letter { font-weight: bold; color: #b45309; margin-right: 2px; }
+
   .resumen { display: flex; gap: 20px; margin: 8px 0 12px; }
   .resumen-item { background: #f0f0f0; padding: 6px 12px; border-radius: 4px; text-align: center; }
   .resumen-valor { font-size: 16px; font-weight: bold; }
@@ -99,6 +111,27 @@ export default function VistaImpresion({
     <div>FERRAPP v1.0</div>
   </div>
 </div>
+
+${(() => {
+      if (!geometria) return "";
+      const g = geometria;
+      const letraLado = (i: number) => String.fromCharCode(97 + i);
+      let html = `<div class="geometria"><strong>GEOMETRIA</strong>`;
+      html += `<div class="geo-row"><span class="geo-label">Forma:</span> ${g.forma}${subtipo ? ` (${subtipo.replace(/_/g, " ")})` : ""}</div>`;
+      // Lados con letras
+      const ladosStr = g.lados.map((l, i) => `<span class="geo-letter">${letraLado(i)}</span>${l.nombre}: ${l.longitud}m`).join(" &mdash; ");
+      html += `<div class="geo-row"><span class="geo-label">Lados:</span> ${ladosStr}</div>`;
+      if (g.alto) html += `<div class="geo-row"><span class="geo-label">Alto:</span> ${g.alto}m</div>`;
+      if (g.seccionAncho && g.seccionAlto) html += `<div class="geo-row"><span class="geo-label">Seccion:</span> ${g.seccionAncho} &times; ${g.seccionAlto}m</div>`;
+      html += `<div class="geo-row"><span class="geo-label">Separacion:</span> ${Math.round((g.espaciado || 0.20) * 100)}cm</div>`;
+      if (g.anchoZuncho) html += `<div class="geo-row"><span class="geo-label">Zuncho perimetral:</span> ${Math.round(g.anchoZuncho * 100)}cm</div>`;
+      if (g.huecos && g.huecos.length > 0) {
+        const hStr = g.huecos.map(h => `${h.nombre} (${h.largo}&times;${h.ancho}m)`).join(", ");
+        html += `<div class="geo-row"><span class="geo-label">Huecos:</span> ${hStr}</div>`;
+      }
+      html += `</div>`;
+      return html;
+    })()}
 
 <div class="resumen">
   <div class="resumen-item">

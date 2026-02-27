@@ -108,17 +108,32 @@ function generarBarrasSuperficie(g: GeometriaElemento, subtipo?: string): BarraB
     const dNeg = diam["Negativos gruesos"] || 12;
     const dNegFino = diam["Negativos finos"] || 10;
     const dMalla = diam["Malla reparto largo"] || 6;
+    const zwUni = g.anchoZuncho || 0;
+    const huecosUni = g.huecos || [];
     for (const [idx, z] of zonas.entries()) {
       const nombres = getNombresZonaSuperficie(g.forma);
       const prefix = multiZona ? `${nombres[idx] || `Ala ${idx + 1}`} ` : "";
-      const cantL = Math.round(z.ancho / esp);
-      const cantA = Math.round(z.largo / esp);
+      const netLargo = Math.max(z.largo - 2 * zwUni, 0);
+      const netAncho = Math.max(z.ancho - 2 * zwUni, 0);
+      let cantL = Math.round(netAncho / esp);
+      let cantA = Math.round(netLargo / esp);
+      if (idx === 0) {
+        for (const h of huecosUni) {
+          cantL = Math.max(0, cantL - Math.round(h.ancho / esp));
+          cantA = Math.max(0, cantA - Math.round(h.largo / esp));
+        }
+      }
       barras.push(
-        { longitud: +(z.ancho * 0.5).toFixed(2), diametro: dNeg, cantidad: cantL, etiqueta: `${prefix}Negativos gruesos` },
-        { longitud: +(z.ancho * 0.3).toFixed(2), diametro: dNegFino, cantidad: cantL, etiqueta: `${prefix}Negativos finos` },
-        { longitud: +z.largo.toFixed(2), diametro: dMalla, cantidad: cantL, etiqueta: `${prefix}Malla reparto largo` },
-        { longitud: +z.ancho.toFixed(2), diametro: dMalla, cantidad: cantA, etiqueta: `${prefix}Malla reparto ancho` },
+        { longitud: +(netAncho * 0.5).toFixed(2), diametro: dNeg, cantidad: cantL, etiqueta: `${prefix}Negativos gruesos` },
+        { longitud: +(netAncho * 0.3).toFixed(2), diametro: dNegFino, cantidad: cantL, etiqueta: `${prefix}Negativos finos` },
+        { longitud: +netLargo.toFixed(2), diametro: dMalla, cantidad: cantL, etiqueta: `${prefix}Malla reparto largo` },
+        { longitud: +netAncho.toFixed(2), diametro: dMalla, cantidad: cantA, etiqueta: `${prefix}Malla reparto ancho` },
       );
+    }
+    // Refuerzo perimetral de huecos
+    for (const h of huecosUni) {
+      barras.push({ longitud: +h.largo.toFixed(2), diametro: dMalla, cantidad: 4, etiqueta: `Refuerzo hueco ${h.nombre} largo` });
+      barras.push({ longitud: +h.ancho.toFixed(2), diametro: dMalla, cantidad: 4, etiqueta: `Refuerzo hueco ${h.nombre} ancho` });
     }
     return barras;
   }
@@ -127,38 +142,79 @@ function generarBarrasSuperficie(g: GeometriaElemento, subtipo?: string): BarraB
     const dNervio = diam["Nervios abajo largo"] || 12;
     const dMalla = diam["Malla base"] || 6;
     const dCap = diam["Refuerzo capiteles"] || 16;
+    const zw = g.anchoZuncho || 0; // ancho zuncho perimetral
+    const huecos = g.huecos || [];
+
     for (const [idx, z] of zonas.entries()) {
       const nombres = getNombresZonaSuperficie(g.forma);
       const prefix = multiZona ? `${nombres[idx] || `Ala ${idx + 1}`} ` : "";
-      const cantL = Math.round(z.ancho / esp);
-      const cantA = Math.round(z.largo / esp);
+
+      // Dimensiones netas (descontando zunchos perimetrales)
+      const netLargo = Math.max(z.largo - 2 * zw, 0);
+      const netAncho = Math.max(z.ancho - 2 * zw, 0);
+
+      // Cantidades base (zona neta)
+      let cantL = Math.round(netAncho / esp);
+      let cantA = Math.round(netLargo / esp);
+
+      // Descontar huecos (solo en zona principal, idx=0)
+      if (idx === 0) {
+        for (const h of huecos) {
+          cantL = Math.max(0, cantL - Math.round(h.ancho / esp));
+          cantA = Math.max(0, cantA - Math.round(h.largo / esp));
+        }
+      }
+
       barras.push(
-        { longitud: +z.largo.toFixed(2), diametro: dNervio, cantidad: cantL, etiqueta: `${prefix}Nervios abajo largo` },
-        { longitud: +z.ancho.toFixed(2), diametro: dNervio, cantidad: cantA, etiqueta: `${prefix}Nervios abajo ancho` },
-        { longitud: +(z.largo * 0.5).toFixed(2), diametro: dNervio, cantidad: cantL, etiqueta: `${prefix}Nervios arriba largo` },
-        { longitud: +(z.ancho * 0.5).toFixed(2), diametro: dNervio, cantidad: cantA, etiqueta: `${prefix}Nervios arriba ancho` },
-        { longitud: +z.largo.toFixed(2), diametro: dMalla, cantidad: Math.round(z.ancho / 0.30), etiqueta: `${prefix}Malla base` },
+        { longitud: +netLargo.toFixed(2), diametro: dNervio, cantidad: cantL, etiqueta: `${prefix}Nervios abajo largo` },
+        { longitud: +netAncho.toFixed(2), diametro: dNervio, cantidad: cantA, etiqueta: `${prefix}Nervios abajo ancho` },
+        { longitud: +(netLargo * 0.5).toFixed(2), diametro: dNervio, cantidad: cantL, etiqueta: `${prefix}Nervios arriba largo` },
+        { longitud: +(netAncho * 0.5).toFixed(2), diametro: dNervio, cantidad: cantA, etiqueta: `${prefix}Nervios arriba ancho` },
+        { longitud: +netLargo.toFixed(2), diametro: dMalla, cantidad: Math.round(netAncho / 0.30), etiqueta: `${prefix}Malla base` },
       );
     }
     barras.push({ longitud: 1.50, diametro: dCap, cantidad: 16, etiqueta: "Refuerzo capiteles" });
+
+    // Refuerzo perimetral de huecos
+    for (const h of huecos) {
+      const periHueco = +((h.largo + h.ancho) * 2).toFixed(2);
+      const dRef = diam["Nervios abajo largo"] || 12;
+      barras.push({ longitud: +h.largo.toFixed(2), diametro: dRef, cantidad: 4, etiqueta: `Refuerzo hueco ${h.nombre} largo` });
+      barras.push({ longitud: +h.ancho.toFixed(2), diametro: dRef, cantidad: 4, etiqueta: `Refuerzo hueco ${h.nombre} ancho` });
+    }
+
     return barras;
   }
 
   // Caso general: losas, zapatas, forjados bidireccionales
+  const zw2 = g.anchoZuncho || 0; // zuncho perimetral (forjados)
+  const huecos = g.huecos || [];
+
   for (const [idx, z] of zonas.entries()) {
     const nombres = getNombresZonaSuperficie(g.forma);
-      const prefix = multiZona ? `${nombres[idx] || `Ala ${idx + 1}`} ` : "";
-    const cantLargo = Math.round(z.ancho / esp);
-    const cantAncho = Math.round(z.largo / esp);
+    const prefix = multiZona ? `${nombres[idx] || `Ala ${idx + 1}`} ` : "";
+    // Dimensiones netas (descontando zunchos si los hay)
+    const netLargo = Math.max(z.largo - 2 * zw2, 0);
+    const netAncho = Math.max(z.ancho - 2 * zw2, 0);
+    let cantLargo = Math.round(netAncho / esp);
+    let cantAncho = Math.round(netLargo / esp);
+
+    // Descontar huecos (solo zona principal idx=0)
+    if (idx === 0) {
+      for (const h of huecos) {
+        cantLargo = Math.max(0, cantLargo - Math.round(h.ancho / esp));
+        cantAncho = Math.max(0, cantAncho - Math.round(h.largo / esp));
+      }
+    }
 
     barras.push({
-      longitud: +z.largo.toFixed(2),
+      longitud: +(zw2 > 0 ? netLargo : z.largo).toFixed(2),
       diametro: dInf,
       cantidad: cantLargo,
       etiqueta: `${prefix}Inferior largo`,
     });
     barras.push({
-      longitud: +z.ancho.toFixed(2),
+      longitud: +(zw2 > 0 ? netAncho : z.ancho).toFixed(2),
       diametro: dInfAncho,
       cantidad: cantAncho,
       etiqueta: `${prefix}Inferior ancho`,
@@ -166,18 +222,24 @@ function generarBarrasSuperficie(g: GeometriaElemento, subtipo?: string): BarraB
 
     if (tieneSuper) {
       barras.push({
-        longitud: +z.largo.toFixed(2),
+        longitud: +(zw2 > 0 ? netLargo : z.largo).toFixed(2),
         diametro: dSup,
         cantidad: cantLargo,
         etiqueta: `${prefix}Superior largo`,
       });
       barras.push({
-        longitud: +z.ancho.toFixed(2),
+        longitud: +(zw2 > 0 ? netAncho : z.ancho).toFixed(2),
         diametro: dSupAncho,
         cantidad: cantAncho,
         etiqueta: `${prefix}Superior ancho`,
       });
     }
+  }
+
+  // Refuerzo perimetral de huecos
+  for (const h of huecos) {
+    barras.push({ longitud: +h.largo.toFixed(2), diametro: dInf, cantidad: 4, etiqueta: `Refuerzo hueco ${h.nombre} largo` });
+    barras.push({ longitud: +h.ancho.toFixed(2), diametro: dInf, cantidad: 4, etiqueta: `Refuerzo hueco ${h.nombre} ancho` });
   }
 
   // Zapatas: añadir arranque pilar
@@ -411,6 +473,7 @@ export function getGeometriaDefault(subtipo: string, categoria: CategoriaElement
         { nombre: "Ancho", longitud: 5 },
       ],
       espaciado: 0.70,
+      anchoZuncho: 0.25,
     };
   }
   if (subtipo === "forjado_reticular") {
@@ -421,6 +484,7 @@ export function getGeometriaDefault(subtipo: string, categoria: CategoriaElement
         { nombre: "Ancho", longitud: 5 },
       ],
       espaciado: 0.72,
+      anchoZuncho: 0.30,
     };
   }
 
