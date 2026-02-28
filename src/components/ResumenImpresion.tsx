@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useEffect, useCallback } from "react";
+import { useRef, useEffect, useCallback, useState } from "react";
 import {
   Proyecto,
   ResultadoDespieceExtendido,
@@ -254,7 +254,8 @@ function generarSVGGeometria(
 function generarHTML(
   proyecto: Proyecto,
   resultados: Map<string, ResultadoDespieceExtendido>,
-  longitudBarraComercial: number
+  longitudBarraComercial: number,
+  orientacion: "portrait" | "landscape" = "portrait"
 ): string {
   const fecha = new Date().toLocaleDateString("es-ES", {
     day: "2-digit", month: "2-digit", year: "numeric",
@@ -299,7 +300,7 @@ body { font-family: Arial, sans-serif; font-size: 10px; color: #000; }
   body { background: #d1d5db; padding: 20px 12px; }
   .page {
     background: white;
-    max-width: 780px;
+    max-width: ${orientacion === "landscape" ? "1080px" : "780px"};
     margin: 0 auto 20px auto;
     padding: 24px 28px;
     border-radius: 6px;
@@ -310,7 +311,7 @@ body { font-family: Arial, sans-serif; font-size: 10px; color: #000; }
   body { background: white; padding: 0; }
   .page { box-shadow: none; margin: 0; border-radius: 0; padding: 0; page-break-after: always; }
   .page:last-child { page-break-after: auto; }
-  @page { margin: 8mm; size: A4 portrait; }
+  @page { margin: 8mm; size: A4 ${orientacion}; }
 }
 
 h1 { font-size: 16px; margin-bottom: 2px; }
@@ -323,20 +324,21 @@ h3 { font-size: 11px; margin: 6px 0 3px; }
 .stat-val { font-size: 15px; font-weight: bold; }
 .stat-lbl { font-size: 8px; color: #666; }
 table { border-collapse: collapse; width: 100%; margin: 4px 0; }
-th, td { border: 1px solid #ccc; padding: 2px 5px; font-size: 9px; }
-th { background: #333; color: #fff; font-size: 8px; text-transform: uppercase; }
+th, td { border: 1px solid #ccc; padding: ${orientacion === "landscape" ? "3px 6px" : "2px 5px"}; font-size: ${orientacion === "landscape" ? "10px" : "9px"}; }
+th { background: #333; color: #fff; font-size: ${orientacion === "landscape" ? "9px" : "8px"}; text-transform: uppercase; }
 td { text-align: center; }
 td:first-child { text-align: left; }
 .mat-table th, .mat-table td { padding: 3px 8px; }
 .element-content { display: flex; gap: 12px; margin-top: 6px; }
-.element-left { width: 46%; }
-.element-right { width: 54%; }
+.element-left { width: ${orientacion === "landscape" ? "38%" : "46%"}; }
+.element-right { width: ${orientacion === "landscape" ? "62%" : "54%"}; }
+.element-left svg { width: 100%; height: auto; max-height: 220px; }
 .geo-info { font-size: 9px; margin-top: 6px; }
 .geo-info div { margin: 1px 0; }
 .geo-info .label { color: #666; }
 .geo-info .amber { color: #b45309; font-weight: bold; }
 .barras-table { margin-top: 6px; }
-.barras-table td, .barras-table th { font-size: 8px; padding: 1px 4px; }
+.barras-table td, .barras-table th { font-size: ${orientacion === "landscape" ? "9px" : "8px"}; padding: ${orientacion === "landscape" ? "2px 5px" : "1px 4px"}; }
 .footer { margin-top: 10px; padding-top: 5px; border-top: 1px solid #ccc; font-size: 8px; color: #888; display: flex; justify-content: space-between; }
 .green { color: #16a34a; }
 .amber { color: #b45309; }
@@ -643,6 +645,7 @@ export default function ResumenImpresion({
   longitudBarraComercial,
 }: ResumenImpresionProps) {
   const iframeRef = useRef<HTMLIFrameElement>(null);
+  const [orientacion, setOrientacion] = useState<"portrait" | "landscape">("portrait");
 
   const ajustarAltura = useCallback(() => {
     const body = iframeRef.current?.contentDocument?.body;
@@ -652,7 +655,7 @@ export default function ResumenImpresion({
   }, []);
 
   useEffect(() => {
-    const html = generarHTML(proyecto, resultados, longitudBarraComercial);
+    const html = generarHTML(proyecto, resultados, longitudBarraComercial, orientacion);
     const doc = iframeRef.current?.contentDocument || iframeRef.current?.contentWindow?.document;
     if (!doc) return;
     doc.open();
@@ -663,7 +666,7 @@ export default function ResumenImpresion({
     const t1 = setTimeout(ajustarAltura, 150);
     const t2 = setTimeout(ajustarAltura, 500);
     return () => { clearTimeout(t1); clearTimeout(t2); };
-  }, [proyecto, resultados, longitudBarraComercial, ajustarAltura]);
+  }, [proyecto, resultados, longitudBarraComercial, orientacion, ajustarAltura]);
 
   const imprimir = () => {
     iframeRef.current?.contentWindow?.print();
@@ -674,16 +677,50 @@ export default function ResumenImpresion({
       {/* Barra sticky con boton imprimir */}
       <div className="sticky top-0 z-10 flex items-center justify-between px-4 py-2 bg-background/90 backdrop-blur-sm border-b border-border">
         <span className="text-sm text-gray-400">Vista previa del resumen</span>
-        <button
-          onClick={imprimir}
-          className="flex items-center gap-2 bg-accent hover:bg-accent-dark text-black font-medium py-2 px-4 rounded-lg text-sm transition-colors"
-        >
-          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M6 9V2h12v7M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2"/>
-            <rect x="6" y="14" width="12" height="8"/>
-          </svg>
-          Imprimir resumen
-        </button>
+        <div className="flex items-center gap-3">
+          {/* Selector de orientación */}
+          <div className="flex items-center bg-gray-800 rounded-lg overflow-hidden border border-gray-600">
+            <button
+              onClick={() => setOrientacion("portrait")}
+              className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium transition-colors ${
+                orientacion === "portrait"
+                  ? "bg-accent text-black"
+                  : "text-gray-300 hover:text-white hover:bg-gray-700"
+              }`}
+              title="Vertical (Portrait)"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" width="12" height="14" viewBox="0 0 12 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+                <rect x="1" y="1" width="10" height="14" rx="1"/>
+              </svg>
+              Vertical
+            </button>
+            <button
+              onClick={() => setOrientacion("landscape")}
+              className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium transition-colors ${
+                orientacion === "landscape"
+                  ? "bg-accent text-black"
+                  : "text-gray-300 hover:text-white hover:bg-gray-700"
+              }`}
+              title="Horizontal (Landscape)"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="12" viewBox="0 0 16 12" fill="none" stroke="currentColor" strokeWidth="1.5">
+                <rect x="1" y="1" width="14" height="10" rx="1"/>
+              </svg>
+              Horizontal
+            </button>
+          </div>
+          {/* Botón imprimir */}
+          <button
+            onClick={imprimir}
+            className="flex items-center gap-2 bg-accent hover:bg-accent-dark text-black font-medium py-2 px-4 rounded-lg text-sm transition-colors"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M6 9V2h12v7M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2"/>
+              <rect x="6" y="14" width="12" height="8"/>
+            </svg>
+            Imprimir
+          </button>
+        </div>
       </div>
       {/* Iframe visible con preview */}
       <iframe
