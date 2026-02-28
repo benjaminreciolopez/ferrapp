@@ -167,22 +167,18 @@ export async function pullFromCloud(): Promise<{ pulled: number; pushed: number 
       const localDate = local ? new Date(local.fechaModificacion).getTime() : 0;
 
       if (!local || remoteDate > localDate) {
-        // Remoto es más nuevo → sobrescribir local
         const proyecto = row.data as Proyecto;
         localMap.set(row.id, proyecto);
         localChanged = true;
         pulled++;
       }
 
-      // Marcar como "visto" — no hace falta push
-      if (local) localMap.delete(row.id); // se queda en el nuevo map
+      if (local) localMap.delete(row.id);
     }
 
     // Reconstruir array local
     if (localChanged) {
-      // Combinar: los remotos actualizados + los locales que no estaban en remoto
       const updated = getLocalProyectos().map((p) => {
-        // Si estaba en remoto y fue actualizado, usar el remoto
         for (const row of remoteRows) {
           if (row.id === p.id && !row.deleted) {
             const remoteDate = new Date(row.fecha_modificacion).getTime();
@@ -192,12 +188,10 @@ export async function pullFromCloud(): Promise<{ pulled: number; pushed: number 
         }
         return p;
       }).filter((p) => {
-        // Eliminar los borrados remotamente
         const remoteRow = remoteRows.find((r) => r.id === p.id);
         return !remoteRow?.deleted;
       });
 
-      // Añadir proyectos remotos que no existían localmente
       for (const row of remoteRows) {
         if (!row.deleted && !updated.find((p) => p.id === row.id)) {
           updated.push(row.data as Proyecto);
@@ -215,7 +209,7 @@ export async function pullFromCloud(): Promise<{ pulled: number; pushed: number 
       dirtyProjects.add(p.id);
       pushed++;
     }
-    if (pushed > 0) pushDirty();
+    if (pushed > 0) await pushDirty();
 
     if (pulled > 0) {
       window.dispatchEvent(new CustomEvent("ferrapp-sync-pull"));
@@ -236,7 +230,6 @@ export async function syncEtiquetas() {
   if (!supabase || !navigator.onLine) return;
 
   try {
-    // Pull remoto
     const { data: remoteEtiquetas } = await supabase
       .from("ferrapp_etiquetas_custom")
       .select("categoria, etiqueta");
@@ -244,7 +237,6 @@ export async function syncEtiquetas() {
     const raw = localStorage.getItem("ferrapp_etiquetas_custom");
     const localMap: Record<string, string[]> = raw ? JSON.parse(raw) : {};
 
-    // Merge: remoto → local
     if (remoteEtiquetas) {
       for (const row of remoteEtiquetas) {
         const lista = localMap[row.categoria] || [];
@@ -256,7 +248,6 @@ export async function syncEtiquetas() {
       localStorage.setItem("ferrapp_etiquetas_custom", JSON.stringify(localMap));
     }
 
-    // Push: local → remoto (upsert)
     const rows: { categoria: string; etiqueta: string }[] = [];
     for (const [cat, etiquetas] of Object.entries(localMap)) {
       for (const et of etiquetas) {
@@ -282,13 +273,8 @@ export function initSync() {
   if (typeof window === "undefined" || initialized) return;
   initialized = true;
 
-  // Sin Supabase → no sync, solo localStorage
-  if (!supabase) {
-    console.info("[sync] Supabase no configurado, modo solo-local");
-    return;
-  }
+  if (!supabase) return;
 
-  // Estado online/offline
   window.addEventListener("online", () => {
     setSyncStatus("idle");
     pullFromCloud();
@@ -305,21 +291,18 @@ export function initSync() {
   pullFromCloud();
   syncEtiquetas();
 
-  // Pull al volver a la pestaña
   document.addEventListener("visibilitychange", () => {
     if (document.visibilityState === "visible" && navigator.onLine) {
       pullFromCloud();
     }
   });
 
-  // Fallback: pull cada 60s
   setInterval(() => {
     if (document.visibilityState === "visible" && navigator.onLine) {
       pullFromCloud();
     }
   }, 60000);
 
-  // Push pendientes antes de cerrar
   window.addEventListener("beforeunload", () => {
     if (dirtyProjects.size > 0) {
       pushDirty();
