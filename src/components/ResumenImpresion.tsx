@@ -49,11 +49,22 @@ function generarSVGGeometria(
       return `<rect x="${sx.toFixed(1)}" y="${sy.toFixed(1)}" width="${hw.toFixed(1)}" height="${hh.toFixed(1)}" fill="none" stroke="#999" stroke-dasharray="3,2"/>
         <text x="${(sx + hw / 2).toFixed(1)}" y="${(sy + hh / 2 + 3).toFixed(1)}" text-anchor="middle" font-size="7" fill="#999">${h.nombre}</text>`;
     }).join("") : "";
-    return `<svg viewBox="0 0 220 160" width="200" height="140" xmlns="http://www.w3.org/2000/svg">
+    const rectCorners = [
+      { x: 35, y: 30, n: 1 },
+      { x: 185, y: 30, n: 2 },
+      { x: 185, y: 130, n: 3 },
+      { x: 35, y: 130, n: 4 },
+    ];
+    const cornersSvg = rectCorners.map(c =>
+      `<circle cx="${c.x}" cy="${c.y}" r="6" fill="#333" stroke="#b45309" stroke-width="1"/>
+       <text x="${c.x}" y="${c.y + 3}" text-anchor="middle" font-size="7" font-weight="bold" fill="#b45309">${c.n}</text>`
+    ).join("\n      ");
+    return `<svg viewBox="0 0 220 160" width="280" height="200" xmlns="http://www.w3.org/2000/svg">
       <rect x="35" y="30" width="150" height="100" fill="#f8f8f8" stroke="#333" stroke-width="1.5"/>
       <text x="110" y="22" text-anchor="middle" font-size="11" font-weight="bold" fill="#b45309">${lbl(0)} = ${a}m</text>
       <text x="195" y="82" text-anchor="start" font-size="11" font-weight="bold" fill="#b45309">${lbl(1)} = ${b}m</text>
       ${huecosHtml}
+      ${cornersSvg}
     </svg>`;
   }
 
@@ -85,10 +96,15 @@ function generarSVGGeometria(
       { x: ox - 6, y: oy + h / 2, text: `${lbl(5)}=${+(lb + ld).toFixed(1)}m`, anchor: "end" },
     ];
 
-    return `<svg viewBox="0 0 220 160" width="200" height="140" xmlns="http://www.w3.org/2000/svg">
+    const cornersSvg = pts.map((p, i) =>
+      `<circle cx="${p[0].toFixed(1)}" cy="${p[1].toFixed(1)}" r="6" fill="#333" stroke="#b45309" stroke-width="1"/>
+       <text x="${p[0].toFixed(1)}" y="${(p[1] + 3).toFixed(1)}" text-anchor="middle" font-size="7" font-weight="bold" fill="#b45309">${i + 1}</text>`
+    ).join("\n      ");
+    return `<svg viewBox="0 0 220 160" width="280" height="200" xmlns="http://www.w3.org/2000/svg">
       <path d="${path}" fill="#f8f8f8" stroke="#333" stroke-width="1.5"/>
       <line x1="${ox}" y1="${(oy + bh).toFixed(1)}" x2="${(ox + ew).toFixed(1)}" y2="${(oy + bh).toFixed(1)}" stroke="#333" stroke-width="0.5" stroke-dasharray="3,2" opacity="0.3"/>
       ${labels.map(l => `<text x="${l.x.toFixed(1)}" y="${l.y.toFixed(1)}" text-anchor="${l.anchor}" font-size="9" font-weight="bold" fill="#b45309">${l.text}</text>`).join("\n      ")}
+      ${cornersSvg}
     </svg>`;
   }
 
@@ -117,7 +133,11 @@ function generarSVGGeometria(
     ];
     const path = pts.map((p, i) => `${i === 0 ? "M" : "L"} ${p[0].toFixed(1)},${p[1].toFixed(1)}`).join(" ") + " Z";
 
-    return `<svg viewBox="0 0 220 160" width="200" height="140" xmlns="http://www.w3.org/2000/svg">
+    const cornersSvg = pts.map((p, i) =>
+      `<circle cx="${p[0].toFixed(1)}" cy="${p[1].toFixed(1)}" r="6" fill="#333" stroke="#b45309" stroke-width="1"/>
+       <text x="${p[0].toFixed(1)}" y="${(p[1] + 3).toFixed(1)}" text-anchor="middle" font-size="7" font-weight="bold" fill="#b45309">${i + 1}</text>`
+    ).join("\n      ");
+    return `<svg viewBox="0 0 220 160" width="280" height="200" xmlns="http://www.w3.org/2000/svg">
       <path d="${path}" fill="#f8f8f8" stroke="#333" stroke-width="1.5"/>
       <text x="${ox - 4}" y="${oy + h / 2}" text-anchor="end" font-size="9" font-weight="bold" fill="#b45309">${lbl(0)}=${alaIzqL}m</text>
       <text x="${ox + lw / 2}" y="${oy - 4}" text-anchor="middle" font-size="9" font-weight="bold" fill="#b45309">${lbl(1)}=${alaIzqA}m</text>
@@ -125,6 +145,7 @@ function generarSVGGeometria(
       <text x="${ox + w / 2}" y="${oy + h - bh - 4}" text-anchor="middle" font-size="9" font-weight="bold" fill="#b45309">${lbl(3)}=${centroA}m</text>
       <text x="${ox + w + 4}" y="${oy + h / 2}" text-anchor="start" font-size="9" font-weight="bold" fill="#b45309">${lbl(4)}=${alaDerL}m</text>
       <text x="${ox + w - rw / 2}" y="${oy - 4}" text-anchor="middle" font-size="9" font-weight="bold" fill="#b45309">${lbl(5)}=${alaDerA}m</text>
+      ${cornersSvg}
     </svg>`;
   }
 
@@ -132,7 +153,7 @@ function generarSVGGeometria(
   if (tipo === "muro" && (g.forma === "recto" || g.lados.length === 1)) {
     const a = g.lados[0]?.longitud || 5;
     const alto = g.alto || 3;
-    return `<svg viewBox="0 0 220 120" width="200" height="100" xmlns="http://www.w3.org/2000/svg">
+    return `<svg viewBox="0 0 220 120" width="280" height="140" xmlns="http://www.w3.org/2000/svg">
       <rect x="30" y="30" width="160" height="60" fill="#f8f8f8" stroke="#333" stroke-width="1.5"/>
       <text x="110" y="22" text-anchor="middle" font-size="11" font-weight="bold" fill="#b45309">${lbl(0)} = ${a}m</text>
       <text x="200" y="62" text-anchor="start" font-size="10" fill="#666">h = ${alto}m</text>
@@ -143,7 +164,7 @@ function generarSVGGeometria(
   if (tipo === "muro" && g.forma === "l" && g.lados.length >= 2) {
     const a = g.lados[0]?.longitud || 5;
     const b = g.lados[1]?.longitud || 5;
-    return `<svg viewBox="0 0 220 140" width="200" height="120" xmlns="http://www.w3.org/2000/svg">
+    return `<svg viewBox="0 0 220 140" width="280" height="170" xmlns="http://www.w3.org/2000/svg">
       <polyline points="30,30 30,110 150,110" fill="none" stroke="#333" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
       <text x="18" y="70" text-anchor="end" font-size="11" font-weight="bold" fill="#b45309">${lbl(0)}=${a}m</text>
       <text x="90" y="128" text-anchor="middle" font-size="11" font-weight="bold" fill="#b45309">${lbl(1)}=${b}m</text>
@@ -156,7 +177,7 @@ function generarSVGGeometria(
     const a = g.lados[0]?.longitud || 5;
     const b = g.lados[1]?.longitud || 5;
     const c = g.lados[2]?.longitud || 5;
-    return `<svg viewBox="0 0 220 140" width="200" height="120" xmlns="http://www.w3.org/2000/svg">
+    return `<svg viewBox="0 0 220 140" width="280" height="170" xmlns="http://www.w3.org/2000/svg">
       <polyline points="30,30 30,110 170,110 170,30" fill="none" stroke="#333" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
       <text x="18" y="72" text-anchor="end" font-size="10" font-weight="bold" fill="#b45309">${lbl(0)}=${a}m</text>
       <text x="100" y="128" text-anchor="middle" font-size="10" font-weight="bold" fill="#b45309">${lbl(1)}=${b}m</text>
@@ -167,7 +188,7 @@ function generarSVGGeometria(
 
   // Muro cerrado
   if (tipo === "muro" && g.forma === "cerrado" && g.lados.length >= 4) {
-    return `<svg viewBox="0 0 220 160" width="200" height="140" xmlns="http://www.w3.org/2000/svg">
+    return `<svg viewBox="0 0 220 160" width="280" height="200" xmlns="http://www.w3.org/2000/svg">
       <rect x="35" y="30" width="150" height="100" fill="none" stroke="#333" stroke-width="6" rx="2"/>
       ${g.lados.slice(0, 4).map((l, i) => {
         const positions = [
@@ -188,7 +209,7 @@ function generarSVGGeometria(
     const sw = g.seccionAncho || 0.30;
     const sh = g.seccionAlto || 0.30;
     const alto = g.alto || 3;
-    return `<svg viewBox="0 0 220 140" width="200" height="120" xmlns="http://www.w3.org/2000/svg">
+    return `<svg viewBox="0 0 220 140" width="280" height="170" xmlns="http://www.w3.org/2000/svg">
       <rect x="60" y="30" width="100" height="80" fill="#f8f8f8" stroke="#333" stroke-width="1.5"/>
       <text x="110" y="22" text-anchor="middle" font-size="10" font-weight="bold" fill="#b45309">${sw}m</text>
       <text x="170" y="72" text-anchor="start" font-size="10" font-weight="bold" fill="#b45309">${sh}m</text>
@@ -201,7 +222,7 @@ function generarSVGGeometria(
     const a = g.lados[0]?.longitud || 5;
     const sw = g.seccionAncho || 0.30;
     const sh = g.seccionAlto || 0.30;
-    return `<svg viewBox="0 0 220 100" width="200" height="80" xmlns="http://www.w3.org/2000/svg">
+    return `<svg viewBox="0 0 220 100" width="280" height="110" xmlns="http://www.w3.org/2000/svg">
       <rect x="20" y="30" width="180" height="30" fill="#f8f8f8" stroke="#333" stroke-width="1.5"/>
       <text x="110" y="22" text-anchor="middle" font-size="11" font-weight="bold" fill="#b45309">${lbl(0)} = ${a}m</text>
       <text x="110" y="80" text-anchor="middle" font-size="9" fill="#666">Seccion: ${sw} × ${sh}m</text>
@@ -212,7 +233,7 @@ function generarSVGGeometria(
   if (tipo === "escalera") {
     const a = g.lados[0]?.longitud || 4;
     const b = g.lados[1]?.longitud || 1.2;
-    return `<svg viewBox="0 0 220 140" width="200" height="120" xmlns="http://www.w3.org/2000/svg">
+    return `<svg viewBox="0 0 220 140" width="280" height="170" xmlns="http://www.w3.org/2000/svg">
       <polygon points="30,110 180,30 195,38 45,118" fill="#f8f8f8" stroke="#333" stroke-width="1.5"/>
       <text x="105" y="55" text-anchor="middle" font-size="11" font-weight="bold" fill="#b45309" transform="rotate(-25,105,55)">${lbl(0)} = ${a}m</text>
       <text x="195" y="22" text-anchor="start" font-size="11" font-weight="bold" fill="#b45309">${lbl(1)} = ${b}m</text>
@@ -308,8 +329,8 @@ td { text-align: center; }
 td:first-child { text-align: left; }
 .mat-table th, .mat-table td { padding: 3px 8px; }
 .element-content { display: flex; gap: 12px; margin-top: 6px; }
-.element-left { width: 38%; }
-.element-right { width: 62%; }
+.element-left { width: 46%; }
+.element-right { width: 54%; }
 .geo-info { font-size: 9px; margin-top: 6px; }
 .geo-info div { margin: 1px 0; }
 .geo-info .label { color: #666; }
@@ -469,8 +490,19 @@ td:first-child { text-align: left; }
     let geoMeta = "";
     if (el.geometria) {
       const g = el.geometria;
-      geoMeta += `<div><span class="label">Forma:</span> ${g.forma}</div>`;
-      geoMeta += `<div><span class="label">Lados:</span> ${g.lados.map((l, i) => `<span class="amber">${letraLado(i, l)}</span>=${l.longitud}m`).join(", ")}</div>`;
+      const tipoGeo = getTipoGeometria(el.categoria || "libre", el.subtipo);
+      const showCorners = tipoGeo === "superficie" && ["rectangular", "l", "u"].includes(g.forma);
+      const numCorners = g.forma === "rectangular" ? 4 : g.forma === "l" ? 6 : g.forma === "u" ? 8 : 0;
+      geoMeta += `<div><span class="label">Forma:</span> ${g.forma}${showCorners ? ` — ${numCorners} esquinas` : ""}</div>`;
+      geoMeta += `<div><span class="label">Lados:</span> ${g.lados.map((l, i) => {
+        let cRef = "";
+        if (showCorners) {
+          const from = i + 1;
+          const to = (g.forma === "l" && i === g.lados.length - 1) ? 1 : i + 2;
+          cRef = ` (${from}→${to})`;
+        }
+        return `<span class="amber">${letraLado(i, l)}</span>=${l.longitud}m${cRef}`;
+      }).join(", ")}</div>`;
       if (g.alto) geoMeta += `<div><span class="label">Alto:</span> ${g.alto}m</div>`;
       if (g.seccionAncho && g.seccionAlto) geoMeta += `<div><span class="label">Seccion:</span> ${g.seccionAncho}&times;${g.seccionAlto}m</div>`;
       geoMeta += `<div><span class="label">Separacion:</span> ${Math.round((g.espaciado || 0.20) * 100)}cm</div>`;

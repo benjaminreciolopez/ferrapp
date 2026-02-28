@@ -151,12 +151,25 @@ function GeometriaSVGInteractivo({ geometria, tipo, getEtiqueta, onHuecoMove }: 
 
     if (tipo === "superficie" && g.forma === "rectangular") {
       const x1 = offX, y1 = offY, w = shapeW, h = shapeH;
+      const corners = [
+        { x: x1, y: y1, n: 1 },
+        { x: x1 + w, y: y1, n: 2 },
+        { x: x1 + w, y: y1 + h, n: 3 },
+        { x: x1, y: y1 + h, n: 4 },
+      ];
       return (
         <>
           <rect x={x1} y={y1} width={w} height={h} fill={fill} stroke={stroke} strokeWidth="2" />
           {/* Labels en los lados */}
           <text x={x1 + w / 2} y={y1 - 6} textAnchor="middle" fontSize="12" fontWeight="bold" fill={stroke}>{getEtiqueta(0)} = {g.lados[0]?.longitud}m</text>
           <text x={x1 + w + 6} y={y1 + h / 2} textAnchor="start" fontSize="12" fontWeight="bold" fill={stroke} transform={`rotate(90,${x1 + w + 6},${y1 + h / 2})`}>{getEtiqueta(1)} = {g.lados[1]?.longitud}m</text>
+          {/* Esquinas numeradas */}
+          {corners.map(c => (
+            <g key={c.n}>
+              <circle cx={c.x} cy={c.y} r={8} fill="#1f2937" stroke={stroke} strokeWidth="1.5" />
+              <text x={c.x} y={c.y + 3.5} textAnchor="middle" fontSize="9" fontWeight="bold" fill={stroke}>{c.n}</text>
+            </g>
+          ))}
         </>
       );
     }
@@ -167,16 +180,22 @@ function GeometriaSVGInteractivo({ geometria, tipo, getEtiqueta, onHuecoMove }: 
       const d = g.lados[3].longitud; // Entrante V (alto zona inf)
       const e = g.lados[4].longitud; // Inferior (ancho zona inf)
       const h = b + d; // altura total real = zona sup + zona inf
-      // Puntos L: P0=top-left, P1=top-right, P2=step-outer, P3=step-inner, P4=bottom-right, P5=bottom-left
       const pts = [
         [0, h], [a, h], [a, d], [e, d], [e, 0], [0, 0], [0, h],
       ].map(([x, y]) => `${mToSvgX(x)},${mToSvgY(y)}`).join(" ");
-      // Zona superior (linea divisoria punteada)
       const zonaDivY = mToSvgY(d);
+      // Esquinas numeradas: P1=top-left → P6=bottom-left (lado[i] va de P(i+1) a P(i+2))
+      const corners = [
+        { x: mToSvgX(0), y: mToSvgY(h), n: 1 },
+        { x: mToSvgX(a), y: mToSvgY(h), n: 2 },
+        { x: mToSvgX(a), y: mToSvgY(d), n: 3 },
+        { x: mToSvgX(e), y: mToSvgY(d), n: 4 },
+        { x: mToSvgX(e), y: mToSvgY(0), n: 5 },
+        { x: mToSvgX(0), y: mToSvgY(0), n: 6 },
+      ];
       return (
         <>
           <polygon points={pts} fill={fill} stroke={stroke} strokeWidth="2" />
-          {/* Linea divisoria entre zonas */}
           <line x1={mToSvgX(0)} y1={zonaDivY} x2={mToSvgX(e)} y2={zonaDivY} stroke={stroke} strokeWidth="0.5" strokeDasharray="4,3" opacity="0.3" />
           {/* Labels por lado */}
           <text x={mToSvgX(a / 2)} y={mToSvgY(h) - 6} textAnchor="middle" fontSize="11" fontWeight="bold" fill={stroke}>{getEtiqueta(0)}</text>
@@ -185,6 +204,13 @@ function GeometriaSVGInteractivo({ geometria, tipo, getEtiqueta, onHuecoMove }: 
           <text x={mToSvgX(e) + 8} y={mToSvgY(d / 2)} textAnchor="start" fontSize="11" fontWeight="bold" fill={stroke}>{getEtiqueta(3)}</text>
           <text x={mToSvgX(e / 2)} y={mToSvgY(0) + 14} textAnchor="middle" fontSize="11" fontWeight="bold" fill={stroke}>{getEtiqueta(4)}</text>
           <text x={mToSvgX(0) - 8} y={mToSvgY(h / 2)} textAnchor="end" fontSize="11" fontWeight="bold" fill={stroke}>{getEtiqueta(5)}</text>
+          {/* Esquinas numeradas */}
+          {corners.map(c => (
+            <g key={c.n}>
+              <circle cx={c.x} cy={c.y} r={8} fill="#1f2937" stroke={stroke} strokeWidth="1.5" />
+              <text x={c.x} y={c.y + 3.5} textAnchor="middle" fontSize="9" fontWeight="bold" fill={stroke}>{c.n}</text>
+            </g>
+          ))}
         </>
       );
     }
@@ -225,6 +251,22 @@ function GeometriaSVGInteractivo({ geometria, tipo, getEtiqueta, onHuecoMove }: 
           <text x={oX + (izqW + centroW / 2) * sc} y={oY + (wingH - centroA) * sc - 4} textAnchor="middle" fontSize="10" fontWeight="bold" fill={stroke}>{getEtiqueta(3)}</text>
           <text x={oX + uTotalW * sc + 6} y={oY + uTotalH * sc / 2} textAnchor="start" fontSize="10" fontWeight="bold" fill={stroke}>{getEtiqueta(4)}</text>
           <text x={oX + (izqW + centroW + derW / 2) * sc} y={oY - 6} textAnchor="middle" fontSize="10" fontWeight="bold" fill={stroke}>{getEtiqueta(5)}</text>
+          {/* Esquinas numeradas (8 puntos del U) */}
+          {[
+            { x: oX, y: oY, n: 1 },
+            { x: oX + izqW * sc, y: oY, n: 2 },
+            { x: oX + izqW * sc, y: oY + (wingH - centroA) * sc, n: 3 },
+            { x: oX + (izqW + centroW) * sc, y: oY + (wingH - centroA) * sc, n: 4 },
+            { x: oX + (izqW + centroW) * sc, y: oY, n: 5 },
+            { x: oX + uTotalW * sc, y: oY, n: 6 },
+            { x: oX + uTotalW * sc, y: oY + uTotalH * sc, n: 7 },
+            { x: oX, y: oY + uTotalH * sc, n: 8 },
+          ].map(c => (
+            <g key={c.n}>
+              <circle cx={c.x} cy={c.y} r={7} fill="#1f2937" stroke={stroke} strokeWidth="1.5" />
+              <text x={c.x} y={c.y + 3.5} textAnchor="middle" fontSize="8" fontWeight="bold" fill={stroke}>{c.n}</text>
+            </g>
+          ))}
         </>
       );
     }

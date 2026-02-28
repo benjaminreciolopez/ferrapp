@@ -17,6 +17,36 @@ export function resolverEtiquetaLado(lado: LadoGeometria, idx: number): string {
   return lado.etiqueta || String.fromCharCode(97 + idx);
 }
 
+/** Info de qué lados y esquinas corresponden a cada zona rectangular de una superficie */
+interface InfoLadoZona {
+  ladoLargoIdx: number;
+  ladoAnchoIdx: number;
+  esquinaLargoDesde: number; // 1-based
+  esquinaLargoHasta: number;
+  esquinaAnchoDesde: number;
+  esquinaAnchoHasta: number;
+}
+
+function getInfoZonaSuperficie(forma: FormaElemento, zonaIdx: number): InfoLadoZona {
+  if (forma === "l") {
+    if (zonaIdx === 0) return { ladoLargoIdx: 0, ladoAnchoIdx: 1, esquinaLargoDesde: 1, esquinaLargoHasta: 2, esquinaAnchoDesde: 2, esquinaAnchoHasta: 3 };
+    return { ladoLargoIdx: 4, ladoAnchoIdx: 3, esquinaLargoDesde: 5, esquinaLargoHasta: 6, esquinaAnchoDesde: 4, esquinaAnchoHasta: 5 };
+  }
+  if (forma === "u") {
+    const base = zonaIdx * 2;
+    const p1 = base + 1, p2 = base + 2, p3 = base + 3;
+    return { ladoLargoIdx: base, ladoAnchoIdx: base + 1, esquinaLargoDesde: p1, esquinaLargoHasta: p2, esquinaAnchoDesde: p2, esquinaAnchoHasta: p3 };
+  }
+  // Rectangular
+  return { ladoLargoIdx: 0, ladoAnchoIdx: 1, esquinaLargoDesde: 1, esquinaLargoHasta: 2, esquinaAnchoDesde: 2, esquinaAnchoHasta: 3 };
+}
+
+/** Genera ref de lado con esquinas: "M2(1-2)" o "a(1-2)" */
+function refLado(lados: LadoGeometria[], ladoIdx: number, desde: number, hasta: number): string {
+  const etiq = resolverEtiquetaLado(lados[ladoIdx], ladoIdx);
+  return `${etiq}(${desde}-${hasta})`;
+}
+
 /**
  * Obtiene el tipo de geometria para un subtipo/categoria dados
  */
@@ -117,8 +147,9 @@ function generarBarrasSuperficie(g: GeometriaElemento, subtipo?: string): BarraB
     const zwUni = g.anchoZuncho || 0;
     const huecosUni = g.huecos || [];
     for (const [idx, z] of zonas.entries()) {
-      const nombres = getNombresZonaSuperficie(g.forma);
-      const prefix = multiZona ? `${nombres[idx] || `Ala ${idx + 1}`} ` : "";
+      const info = getInfoZonaSuperficie(g.forma, idx);
+      const rL = refLado(g.lados, info.ladoLargoIdx, info.esquinaLargoDesde, info.esquinaLargoHasta);
+      const rA = refLado(g.lados, info.ladoAnchoIdx, info.esquinaAnchoDesde, info.esquinaAnchoHasta);
       const netLargo = Math.max(z.largo - 2 * zwUni, 0);
       const netAncho = Math.max(z.ancho - 2 * zwUni, 0);
       let cantL = Math.round(netAncho / esp);
@@ -130,10 +161,10 @@ function generarBarrasSuperficie(g: GeometriaElemento, subtipo?: string): BarraB
         }
       }
       barras.push(
-        { longitud: +(netAncho * 0.5).toFixed(2), diametro: dNeg, cantidad: cantL, etiqueta: `${prefix}Negativos gruesos` },
-        { longitud: +(netAncho * 0.3).toFixed(2), diametro: dNegFino, cantidad: cantL, etiqueta: `${prefix}Negativos finos` },
-        { longitud: +netLargo.toFixed(2), diametro: dMalla, cantidad: cantL, etiqueta: `${prefix}Malla reparto largo` },
-        { longitud: +netAncho.toFixed(2), diametro: dMalla, cantidad: cantA, etiqueta: `${prefix}Malla reparto ancho` },
+        { longitud: +(netAncho * 0.5).toFixed(2), diametro: dNeg, cantidad: cantL, etiqueta: `${rA} neg gruesos` },
+        { longitud: +(netAncho * 0.3).toFixed(2), diametro: dNegFino, cantidad: cantL, etiqueta: `${rA} neg finos` },
+        { longitud: +netLargo.toFixed(2), diametro: dMalla, cantidad: cantL, etiqueta: `${rL} malla` },
+        { longitud: +netAncho.toFixed(2), diametro: dMalla, cantidad: cantA, etiqueta: `${rA} malla` },
       );
     }
     // Refuerzo perimetral de huecos
@@ -152,8 +183,9 @@ function generarBarrasSuperficie(g: GeometriaElemento, subtipo?: string): BarraB
     const huecos = g.huecos || [];
 
     for (const [idx, z] of zonas.entries()) {
-      const nombres = getNombresZonaSuperficie(g.forma);
-      const prefix = multiZona ? `${nombres[idx] || `Ala ${idx + 1}`} ` : "";
+      const info = getInfoZonaSuperficie(g.forma, idx);
+      const rL = refLado(g.lados, info.ladoLargoIdx, info.esquinaLargoDesde, info.esquinaLargoHasta);
+      const rA = refLado(g.lados, info.ladoAnchoIdx, info.esquinaAnchoDesde, info.esquinaAnchoHasta);
 
       // Dimensiones netas (descontando zunchos perimetrales)
       const netLargo = Math.max(z.largo - 2 * zw, 0);
@@ -172,11 +204,11 @@ function generarBarrasSuperficie(g: GeometriaElemento, subtipo?: string): BarraB
       }
 
       barras.push(
-        { longitud: +netLargo.toFixed(2), diametro: dNervio, cantidad: cantL, etiqueta: `${prefix}Nervios abajo largo` },
-        { longitud: +netAncho.toFixed(2), diametro: dNervio, cantidad: cantA, etiqueta: `${prefix}Nervios abajo ancho` },
-        { longitud: +(netLargo * 0.5).toFixed(2), diametro: dNervio, cantidad: cantL, etiqueta: `${prefix}Nervios arriba largo` },
-        { longitud: +(netAncho * 0.5).toFixed(2), diametro: dNervio, cantidad: cantA, etiqueta: `${prefix}Nervios arriba ancho` },
-        { longitud: +netLargo.toFixed(2), diametro: dMalla, cantidad: Math.round(netAncho / 0.30), etiqueta: `${prefix}Malla base` },
+        { longitud: +netLargo.toFixed(2), diametro: dNervio, cantidad: cantL, etiqueta: `${rL} nervio abajo` },
+        { longitud: +netAncho.toFixed(2), diametro: dNervio, cantidad: cantA, etiqueta: `${rA} nervio abajo` },
+        { longitud: +(netLargo * 0.5).toFixed(2), diametro: dNervio, cantidad: cantL, etiqueta: `${rL} nervio arriba` },
+        { longitud: +(netAncho * 0.5).toFixed(2), diametro: dNervio, cantidad: cantA, etiqueta: `${rA} nervio arriba` },
+        { longitud: +netLargo.toFixed(2), diametro: dMalla, cantidad: Math.round(netAncho / 0.30), etiqueta: `${rL} malla` },
       );
     }
     barras.push({ longitud: 1.50, diametro: dCap, cantidad: 16, etiqueta: "Refuerzo capiteles" });
@@ -196,9 +228,20 @@ function generarBarrasSuperficie(g: GeometriaElemento, subtipo?: string): BarraB
   const zw2 = g.anchoZuncho || 0; // zuncho perimetral (forjados)
   const huecos = g.huecos || [];
 
+  // L-shape: barras verticales continuas a lo largo del lado izquierdo (lado[5] = lb+ld)
+  // En vez de cortar barras por zona, las que solapan ambas zonas son continuas
+  const isL = g.forma === "l" && g.lados.length >= 6;
+  let lContinuousCant = 0; // cantidad de barras continuas en la zona solapada
+  if (isL) {
+    const le = g.lados[4].longitud; // ancho de zona inferior
+    const netLe = Math.max(le - 2 * zw2, 0);
+    lContinuousCant = Math.round(netLe / esp);
+  }
+
   for (const [idx, z] of zonas.entries()) {
-    const nombres = getNombresZonaSuperficie(g.forma);
-    const prefix = multiZona ? `${nombres[idx] || `Ala ${idx + 1}`} ` : "";
+    const info = getInfoZonaSuperficie(g.forma, idx);
+    const rL = refLado(g.lados, info.ladoLargoIdx, info.esquinaLargoDesde, info.esquinaLargoHasta);
+    const rA = refLado(g.lados, info.ladoAnchoIdx, info.esquinaAnchoDesde, info.esquinaAnchoHasta);
     // Dimensiones netas (descontando zunchos si los hay)
     const netLargo = Math.max(z.largo - 2 * zw2, 0);
     const netAncho = Math.max(z.ancho - 2 * zw2, 0);
@@ -213,31 +256,91 @@ function generarBarrasSuperficie(g: GeometriaElemento, subtipo?: string): BarraB
       }
     }
 
+    // LARGO (horizontal): siempre por zona
     barras.push({
       longitud: +(zw2 > 0 ? netLargo : z.largo).toFixed(2),
       diametro: dInf,
       cantidad: cantLargo,
-      etiqueta: `${prefix}Inferior largo`,
+      etiqueta: `${rL} inf`,
     });
-    barras.push({
-      longitud: +(zw2 > 0 ? netAncho : z.ancho).toFixed(2),
-      diametro: dInfAncho,
-      cantidad: cantAncho,
-      etiqueta: `${prefix}Inferior ancho`,
-    });
+
+    // ANCHO (vertical): L-shape usa barras continuas en la zona solapada
+    if (isL && idx === 0) {
+      // Zone 0: solo la porcion no solapada (lado derecho, la-le)
+      const cantNonOverlap = Math.max(0, cantAncho - lContinuousCant);
+      if (cantNonOverlap > 0) {
+        barras.push({
+          longitud: +(zw2 > 0 ? netAncho : z.ancho).toFixed(2),
+          diametro: dInfAncho,
+          cantidad: cantNonOverlap,
+          etiqueta: `${rA} inf`,
+        });
+      }
+    } else if (isL && idx === 1) {
+      // Zone 1: barras verticales ya cubiertas por las continuas — no generar
+    } else {
+      // Caso normal (rectangular, U, etc.)
+      barras.push({
+        longitud: +(zw2 > 0 ? netAncho : z.ancho).toFixed(2),
+        diametro: dInfAncho,
+        cantidad: cantAncho,
+        etiqueta: `${rA} inf`,
+      });
+    }
 
     if (tieneSuper) {
       barras.push({
         longitud: +(zw2 > 0 ? netLargo : z.largo).toFixed(2),
         diametro: dSup,
         cantidad: cantLargo,
-        etiqueta: `${prefix}Superior largo`,
+        etiqueta: `${rL} sup`,
       });
+
+      if (isL && idx === 0) {
+        const cantNonOverlap = Math.max(0, cantAncho - lContinuousCant);
+        if (cantNonOverlap > 0) {
+          barras.push({
+            longitud: +(zw2 > 0 ? netAncho : z.ancho).toFixed(2),
+            diametro: dSupAncho,
+            cantidad: cantNonOverlap,
+            etiqueta: `${rA} sup`,
+          });
+        }
+      } else if (isL && idx === 1) {
+        // ya cubiertas por continuas
+      } else {
+        barras.push({
+          longitud: +(zw2 > 0 ? netAncho : z.ancho).toFixed(2),
+          diametro: dSupAncho,
+          cantidad: cantAncho,
+          etiqueta: `${rA} sup`,
+        });
+      }
+    }
+  }
+
+  // L-shape: añadir barras verticales continuas a lo largo del lado izquierdo completo
+  // lado[5] = P6→P1, longitud = lb + ld (todo el lado izquierdo)
+  if (isL && lContinuousCant > 0) {
+    const lb = g.lados[1].longitud;
+    const ld = g.lados[3].longitud;
+    const fullHeight = lb + ld;
+    // Solo zuncho en borde superior e inferior (no en la junta interna entre zonas)
+    const netFullHeight = zw2 > 0 ? Math.max(fullHeight - 2 * zw2, 0) : fullHeight;
+    const rIzq = refLado(g.lados, 5, 6, 1); // lado[5] = P6→P1
+
+    barras.push({
+      longitud: +netFullHeight.toFixed(2),
+      diametro: dInfAncho,
+      cantidad: lContinuousCant,
+      etiqueta: `${rIzq} inf`,
+    });
+    if (tieneSuper) {
       barras.push({
-        longitud: +(zw2 > 0 ? netAncho : z.ancho).toFixed(2),
+        longitud: +netFullHeight.toFixed(2),
         diametro: dSupAncho,
-        cantidad: cantAncho,
-        etiqueta: `${prefix}Superior ancho`,
+        cantidad: lContinuousCant,
+        etiqueta: `${rIzq} sup`,
       });
     }
   }
