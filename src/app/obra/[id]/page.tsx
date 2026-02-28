@@ -18,6 +18,7 @@ import BarraInput from "@/components/BarraInput";
 import ResultadoCortes from "@/components/ResultadoCortes";
 import VistaImpresion from "@/components/VistaImpresion";
 import ResumenImpresion from "@/components/ResumenImpresion";
+import SyncIndicator from "@/components/SyncIndicator";
 import SelectorElemento from "@/components/SelectorElemento";
 import GeometriaInput from "@/components/GeometriaInput";
 import { generarBarrasDesdeGeometria, getGeometriaDefault, getTipoGeometria } from "@/lib/generadores";
@@ -285,6 +286,7 @@ export default function ObraPage({ params }: { params: Promise<{ id: string }> }
             &larr; Mis obras
           </button>
           <h1 className="text-xl font-bold text-accent">FERRAPP</h1>
+          <SyncIndicator />
           <span className="text-gray-500">|</span>
           <input
             type="text"

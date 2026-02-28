@@ -10,6 +10,7 @@ import {
   eliminarProyecto,
   setProyectoActivo,
 } from "@/lib/storage";
+import SyncIndicator from "@/components/SyncIndicator";
 
 export default function Home() {
   const router = useRouter();
@@ -19,6 +20,10 @@ export default function Home() {
 
   useEffect(() => {
     setProyectos(getProyectos());
+    // Refrescar lista cuando llegan datos remotos
+    const handler = () => setProyectos(getProyectos());
+    window.addEventListener("ferrapp-sync-pull", handler);
+    return () => window.removeEventListener("ferrapp-sync-pull", handler);
   }, []);
 
   const crearNuevo = () => {
@@ -101,7 +106,8 @@ export default function Home() {
   return (
     <div className="min-h-screen bg-background p-4 md:p-8">
       <div className="max-w-4xl mx-auto">
-        <header className="mb-10 text-center">
+        <header className="mb-10 text-center relative">
+          <div className="absolute top-0 right-0"><SyncIndicator /></div>
           <h1 className="text-5xl font-bold text-accent mb-2">FERRAPP</h1>
           <p className="text-gray-400 text-lg">Optimizador de despiece de ferralla</p>
         </header>

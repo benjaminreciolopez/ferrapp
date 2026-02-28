@@ -1,6 +1,7 @@
 import { Proyecto, CONFIG_DEFAULT, ElementoEstructural, BarraNecesaria } from "./types";
 import { getPlantilla } from "./plantillas";
 import { getGeometriaDefault } from "./generadores";
+import { markDirty, markDeleted, syncEtiquetas } from "./sync";
 
 const PROJECTS_KEY = "ferrapp_proyectos";
 const ACTIVE_KEY = "ferrapp_activo";
@@ -76,10 +77,12 @@ export function guardarProyecto(proyecto: Proyecto) {
     proyectos.push(proyecto);
   }
   guardarProyectos(proyectos);
+  markDirty(proyecto.id); // sync → Supabase (debounced)
 }
 
 export function eliminarProyecto(id: string) {
   guardarProyectos(getProyectos().filter((p) => p.id !== id));
+  markDeleted(id); // sync → Supabase (inmediato)
 }
 
 export function getProyectoActivo(): string | null {
@@ -111,5 +114,6 @@ export function guardarEtiquetaCustom(categoria: string, etiqueta: string) {
     lista.push(etiqueta);
     todas[categoria] = lista;
     localStorage.setItem(ETIQUETAS_KEY, JSON.stringify(todas));
+    syncEtiquetas(); // sync → Supabase
   }
 }
