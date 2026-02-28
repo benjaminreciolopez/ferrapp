@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { BarraNecesaria, CategoriaElemento, DIAMETROS_DISPONIBLES, SOLAPES_ESTANDAR } from "@/lib/types";
 import { ETIQUETAS_POR_CATEGORIA } from "@/lib/plantillas";
+import NumInput from "./NumInput";
 
 interface BarraInputProps {
   barra: BarraNecesaria;
@@ -96,22 +97,18 @@ export default function BarraInput({ barra, longitudMax, solapeActual, categoria
           ))}
         </select>
 
-        <input
-          type="number"
+        <NumInput
           value={barra.longitud}
-          onChange={(e) => onChange({ ...barra, longitud: parseFloat(e.target.value) || 0 })}
-          step={0.01}
-          min={0.01}
+          onChange={(v) => onChange({ ...barra, longitud: v })}
           className="bg-surface-light border border-border rounded px-1.5 py-1 text-xs w-16 text-foreground focus:outline-none focus:border-accent"
         />
         <span className="text-gray-500">m</span>
 
         <span className="text-gray-600">x</span>
-        <input
-          type="number"
+        <NumInput
           value={barra.cantidad}
-          onChange={(e) => onChange({ ...barra, cantidad: parseInt(e.target.value) || 1 })}
-          min={1}
+          onChange={(v) => onChange({ ...barra, cantidad: v || 1 })}
+          decimals={false}
           className="bg-surface-light border border-border rounded px-1.5 py-1 text-xs w-12 text-foreground focus:outline-none focus:border-accent"
         />
 

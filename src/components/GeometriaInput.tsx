@@ -8,6 +8,7 @@ import {
   LadoGeometria,
   Hueco,
 } from "@/lib/types";
+import NumInput from "./NumInput";
 import { getTipoGeometria, getLadosForma, getLadosSuperficie, getNombresZonaSuperficie, getGeometriaDefault } from "@/lib/generadores";
 
 interface GeometriaInputProps {
@@ -233,12 +234,9 @@ export default function GeometriaInput({
                 <div key={idx} className="flex items-center gap-1">
                   <span className="text-xs font-bold text-accent w-3">{letraLado(idx)}</span>
                   <label className="text-xs text-gray-400 w-14 shrink-0">{lado.nombre}:</label>
-                  <input
-                    type="number"
+                  <NumInput
                     value={lado.longitud}
-                    onChange={(e) => updateLado(idx, parseFloat(e.target.value) || 0)}
-                    step={0.1}
-                    min={0.1}
+                    onChange={(v) => updateLado(idx, v)}
                     className="bg-surface-light border border-border rounded px-2 py-1 text-sm w-16 text-foreground focus:outline-none focus:border-accent"
                   />
                   <span className="text-xs text-gray-500">m</span>
@@ -280,20 +278,16 @@ export default function GeometriaInput({
                       <span className="text-[10px] font-bold text-accent/60 w-10">{nombresZona[zIdx]}</span>
                     )}
                     <span className="text-xs font-bold text-accent">{letraLado(zona.idx)}</span>
-                    <input
-                      type="number"
+                    <NumInput
                       value={zona.largo.longitud}
-                      onChange={(e) => updateLado(zona.idx, parseFloat(e.target.value) || 0)}
-                      step={0.1} min={0.1}
+                      onChange={(v) => updateLado(zona.idx, v)}
                       className="bg-surface-light border border-border rounded px-2 py-1 text-sm w-14 text-foreground focus:outline-none focus:border-accent"
                     />
                     <span className="text-[10px] text-gray-500">×</span>
                     <span className="text-xs font-bold text-accent">{letraLado(zona.idx + 1)}</span>
-                    <input
-                      type="number"
+                    <NumInput
                       value={zona.ancho.longitud}
-                      onChange={(e) => updateLado(zona.idx + 1, parseFloat(e.target.value) || 0)}
-                      step={0.1} min={0.1}
+                      onChange={(v) => updateLado(zona.idx + 1, v)}
                       className="bg-surface-light border border-border rounded px-2 py-1 text-sm w-14 text-foreground focus:outline-none focus:border-accent"
                     />
                     <span className="text-xs text-gray-500">m</span>
@@ -318,12 +312,9 @@ export default function GeometriaInput({
                 <div className="flex items-center gap-1">
                   <span className="text-xs font-bold text-accent">{letraLado(zona.idx)}</span>
                   <label className="text-xs text-gray-400">Largo:</label>
-                  <input
-                    type="number"
+                  <NumInput
                     value={zona.largo.longitud}
-                    onChange={(e) => updateLado(zona.idx, parseFloat(e.target.value) || 0)}
-                    step={0.1}
-                    min={0.1}
+                    onChange={(v) => updateLado(zona.idx, v)}
                     className="bg-surface-light border border-border rounded px-2 py-1 text-sm w-16 text-foreground focus:outline-none focus:border-accent"
                   />
                   <span className="text-xs text-gray-500">m</span>
@@ -331,12 +322,9 @@ export default function GeometriaInput({
                 <div className="flex items-center gap-1">
                   <span className="text-xs font-bold text-accent">{letraLado(zona.idx + 1)}</span>
                   <label className="text-xs text-gray-400">Ancho:</label>
-                  <input
-                    type="number"
+                  <NumInput
                     value={zona.ancho.longitud}
-                    onChange={(e) => updateLado(zona.idx + 1, parseFloat(e.target.value) || 0)}
-                    step={0.1}
-                    min={0.1}
+                    onChange={(v) => updateLado(zona.idx + 1, v)}
                     className="bg-surface-light border border-border rounded px-2 py-1 text-sm w-16 text-foreground focus:outline-none focus:border-accent"
                   />
                   <span className="text-xs text-gray-500">m</span>
@@ -354,12 +342,9 @@ export default function GeometriaInput({
             <div key={idx} className="flex items-center gap-1">
               <span className="text-xs font-bold text-accent w-3">{letraLado(idx)}</span>
               <label className="text-xs text-gray-400">{lado.nombre}:</label>
-              <input
-                type="number"
+              <NumInput
                 value={lado.longitud}
-                onChange={(e) => updateLado(idx, parseFloat(e.target.value) || 0)}
-                step={0.1}
-                min={0.1}
+                onChange={(v) => updateLado(idx, v)}
                 className="bg-surface-light border border-border rounded px-2 py-1 text-sm w-16 text-foreground focus:outline-none focus:border-accent"
               />
               <span className="text-xs text-gray-500">m</span>
@@ -370,12 +355,9 @@ export default function GeometriaInput({
           {(tipo === "muro" || tipo === "pilar") && (
             <div className="flex items-center gap-1">
               <label className="text-xs text-gray-400">Alto:</label>
-              <input
-                type="number"
+              <NumInput
                 value={g.alto || 3}
-                onChange={(e) => updateField({ alto: parseFloat(e.target.value) || 0 })}
-                step={0.1}
-                min={0.1}
+                onChange={(v) => updateField({ alto: v })}
                 className="bg-surface-light border border-border rounded px-2 py-1 text-sm w-16 text-foreground focus:outline-none focus:border-accent"
               />
               <span className="text-xs text-gray-500">m</span>
@@ -386,21 +368,15 @@ export default function GeometriaInput({
           {(tipo === "lineal" || tipo === "pilar") && (
             <div className="flex items-center gap-1">
               <label className="text-xs text-gray-400">Seccion:</label>
-              <input
-                type="number"
+              <NumInput
                 value={g.seccionAncho || 0.30}
-                onChange={(e) => updateField({ seccionAncho: parseFloat(e.target.value) || 0 })}
-                step={0.05}
-                min={0.1}
+                onChange={(v) => updateField({ seccionAncho: v })}
                 className="bg-surface-light border border-border rounded px-2 py-1 text-sm w-14 text-foreground focus:outline-none focus:border-accent"
               />
               <span className="text-xs text-gray-500">x</span>
-              <input
-                type="number"
+              <NumInput
                 value={g.seccionAlto || 0.30}
-                onChange={(e) => updateField({ seccionAlto: parseFloat(e.target.value) || 0 })}
-                step={0.05}
-                min={0.1}
+                onChange={(v) => updateField({ seccionAlto: v })}
                 className="bg-surface-light border border-border rounded px-2 py-1 text-sm w-14 text-foreground focus:outline-none focus:border-accent"
               />
               <span className="text-xs text-gray-500">m</span>
@@ -413,12 +389,10 @@ export default function GeometriaInput({
       <div className="flex items-center gap-3 flex-wrap">
         <div className="flex items-center gap-1">
           <label className="text-xs text-gray-400">Separacion:</label>
-          <input
-            type="number"
+          <NumInput
             value={Math.round((g.espaciado || 0.20) * 100)}
-            onChange={(e) => updateField({ espaciado: (parseFloat(e.target.value) || 20) / 100 })}
-            step={1}
-            min={5}
+            onChange={(v) => updateField({ espaciado: (v || 20) / 100 })}
+            decimals={false}
             className="bg-surface-light border border-border rounded px-2 py-1 text-sm w-16 text-foreground focus:outline-none focus:border-accent"
           />
           <span className="text-xs text-gray-500">cm</span>
@@ -428,12 +402,10 @@ export default function GeometriaInput({
         {esForjado && (
           <div className="flex items-center gap-1">
             <label className="text-xs text-gray-400">Zuncho:</label>
-            <input
-              type="number"
+            <NumInput
               value={Math.round((g.anchoZuncho || 0.30) * 100)}
-              onChange={(e) => updateField({ anchoZuncho: (parseFloat(e.target.value) || 30) / 100 })}
-              step={5}
-              min={10}
+              onChange={(v) => updateField({ anchoZuncho: (v || 30) / 100 })}
+              decimals={false}
               className="bg-surface-light border border-border rounded px-2 py-1 text-sm w-16 text-foreground focus:outline-none focus:border-accent"
             />
             <span className="text-xs text-gray-500">cm</span>
@@ -466,23 +438,17 @@ export default function GeometriaInput({
                   />
                   <div className="flex items-center gap-1">
                     <label className="text-[10px] text-gray-500">L:</label>
-                    <input
-                      type="number"
+                    <NumInput
                       value={h.largo}
-                      onChange={(e) => updateHueco(idx, { largo: parseFloat(e.target.value) || 0 })}
-                      step={0.1}
-                      min={0.1}
+                      onChange={(v) => updateHueco(idx, { largo: v })}
                       className="bg-surface-light border border-border rounded px-1.5 py-0.5 text-xs w-14 text-foreground focus:outline-none focus:border-accent"
                     />
                   </div>
                   <div className="flex items-center gap-1">
                     <label className="text-[10px] text-gray-500">A:</label>
-                    <input
-                      type="number"
+                    <NumInput
                       value={h.ancho}
-                      onChange={(e) => updateHueco(idx, { ancho: parseFloat(e.target.value) || 0 })}
-                      step={0.1}
-                      min={0.1}
+                      onChange={(v) => updateHueco(idx, { ancho: v })}
                       className="bg-surface-light border border-border rounded px-1.5 py-0.5 text-xs w-14 text-foreground focus:outline-none focus:border-accent"
                     />
                   </div>
