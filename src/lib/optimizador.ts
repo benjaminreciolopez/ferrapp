@@ -19,16 +19,18 @@ interface PiezaPlana {
 const SOBRANTE_MINIMO = 0.20;
 
 /**
- * Optimizador de cortes con multi-longitud y reutilizacion de sobrantes.
+ * Optimizador de cortes HIBRIDO con reutilizacion de sobrantes.
  *
  * Soporta:
  * - Multiples longitudes de barra comercial (6m, 12m o ambas)
  * - Patas (ganchos) que anaden longitud a cada pieza
  * - Reutilizacion de sobrantes de elementos anteriores
  *
- * Cuando hay varias longitudes disponibles, prueba multiples estrategias
- * (combinada + cada longitud individual) y elige la que minimiza el total
- * de metros de barra comercial a comprar.
+ * Cuando hay varias longitudes disponibles, usa enfoque hibrido:
+ * 1. Empaqueta todo con la barra mas grande (12m) para maxima eficiencia
+ * 2. Post-proceso: degrada barras individuales a menores (6m) donde ahorre material
+ *    - Pieza de 11.5m en barra de 12m (0.5m desperdicio) -> mantiene 12m
+ *    - Pieza suelta de 3m en barra de 12m (9m desperdicio) -> baja a 6m (3m desperdicio)
  */
 export function optimizarCortes(
   barrasNecesarias: BarraNecesaria[],
@@ -39,40 +41,7 @@ export function optimizarCortes(
     ? [...config.longitudesDisponibles].sort((a, b) => b - a)
     : [config.longitudBarraComercial];
 
-  // Una sola longitud: ejecutar directamente
-  if (longitudes.length <= 1) {
-    return ejecutarEstrategia(barrasNecesarias, config, sobrantesDisponibles, longitudes);
-  }
-
-  // Varias longitudes: probar combinada + cada individual, elegir la mejor
-  const estrategias: number[][] = [
-    longitudes,                      // todas combinadas [12, 6]
-    ...longitudes.map(L => [L]),     // cada una sola [12], [6]
-  ];
-
-  let mejorResultado: ResultadoDespieceExtendido | null = null;
-  let menorCosto = Infinity;
-
-  for (const estrategia of estrategias) {
-    const resultado = ejecutarEstrategia(
-      barrasNecesarias, config, sobrantesDisponibles, estrategia
-    );
-
-    // Metrica: total de metros de barra comercial a comprar (menor = mejor)
-    let metrosCompra = 0;
-    for (const r of resultado.resultadosPorDiametro) {
-      for (const bc of r.barrasComerciales) {
-        if (bc.id > 0) metrosCompra += bc.longitudTotal;
-      }
-    }
-
-    if (metrosCompra < menorCosto) {
-      menorCosto = metrosCompra;
-      mejorResultado = resultado;
-    }
-  }
-
-  return mejorResultado!;
+  return ejecutarEstrategia(barrasNecesarias, config, sobrantesDisponibles, longitudes);
 }
 
 /** Ejecuta la optimizacion completa con un conjunto fijo de longitudes */
@@ -197,12 +166,64 @@ function expandirPiezas(
   return piezas;
 }
 
+/** FFD: cuenta cuantas barras de longitud L se necesitan para empaquetar las piezas */
+function contarBarrasFFD(piezas: number[], L: number): number {
+  const sorted = [...piezas].sort((a, b) => b - a);
+  const bins: number[] = [];
+  for (const p of sorted) {
+    if (p > L) return Infinity;
+    let mejorIdx = -1;
+    let menorResto = Infinity;
+    for (let i = 0; i < bins.length; i++) {
+      if (bins[i] >= p) {
+        const r = bins[i] - p;
+        if (r < menorResto) { menorResto = r; mejorIdx = i; }
+      }
+    }
+    if (mejorIdx >= 0) bins[mejorIdx] -= p;
+    else bins.push(L - p);
+  }
+  return bins.length;
+}
+
+/** Reempaqueta cortes de una barra grande en barras de longitud L usando FFD */
+function reempaquetarEnBarras(
+  cortes: BarraComercial["cortes"],
+  L: number,
+  startId: number
+): BarraComercial[] {
+  const sorted = [...cortes].sort((a, b) => b.longitud - a.longitud);
+  const bins: { cortes: typeof cortes; restante: number }[] = [];
+  for (const c of sorted) {
+    let mejorIdx = -1;
+    let menorResto = Infinity;
+    for (let i = 0; i < bins.length; i++) {
+      if (bins[i].restante >= c.longitud) {
+        const r = bins[i].restante - c.longitud;
+        if (r < menorResto) { menorResto = r; mejorIdx = i; }
+      }
+    }
+    if (mejorIdx >= 0) {
+      bins[mejorIdx].cortes.push(c);
+      bins[mejorIdx].restante = +(bins[mejorIdx].restante - c.longitud).toFixed(3);
+    } else {
+      bins.push({ cortes: [c], restante: +(L - c.longitud).toFixed(3) });
+    }
+  }
+  return bins.map((bin, i) => ({
+    id: startId + i,
+    longitudTotal: L,
+    cortes: bin.cortes,
+    sobrante: bin.restante,
+  }));
+}
+
 /**
- * BFD con multi-longitud y sobrantes.
+ * BFD con sobrantes y post-proceso hibrido.
  * Para cada pieza:
  * 1. Intenta en sobrantes existentes (Best Fit)
  * 2. Intenta en barras comerciales ya abiertas (Best Fit)
- * 3. Abre barra nueva: elige la MAS CORTA que quepa la pieza (minimiza desperdicio)
+ * 3. Abre barra de la longitud mayor (post-proceso degradara donde convenga)
  */
 function bestFitMultiLongitud(
   piezas: PiezaPlana[],
@@ -225,7 +246,7 @@ function bestFitMultiLongitud(
     .filter((s) => !s.usado && s.longitud >= SOBRANTE_MINIMO)
     .map((s) => ({ ...s, restante: s.longitud }));
 
-  const barrasComerciales: BarraComercial[] = [];
+  let barrasComerciales: BarraComercial[] = [];
   const barrasDeSobrante: BarraComercial[] = [];
   let barraId = 1;
   let barrasobranteId = -1;
@@ -309,19 +330,8 @@ function bestFitMultiLongitud(
           +(barrasComerciales[mejorIdx].sobrante - pieza.longitud).toFixed(3);
       } else {
         // PRIORIDAD 3: Abrir barra nueva
-        // Elegir la barra MAS CORTA que quepa la pieza (menos desperdicio)
-        let mejorLongitud = longitudes[0]; // fallback a la mas larga
-        let menorDesperdicio = Infinity;
-
-        for (const L of longitudes) {
-          if (L >= pieza.longitud) {
-            const desp = L - pieza.longitud;
-            if (desp < menorDesperdicio) {
-              menorDesperdicio = desp;
-              mejorLongitud = L;
-            }
-          }
-        }
+        // Siempre la mas grande (post-proceso bajara a menores donde convenga)
+        const mejorLongitud = longitudes[0];
 
         barrasComerciales.push({
           id: barraId++,
@@ -336,6 +346,33 @@ function bestFitMultiLongitud(
         });
       }
     }
+  }
+
+  // === Post-proceso hibrido: degradar barras grandes donde menores ahorren material ===
+  if (longitudes.length > 1) {
+    const Lmenor = longitudes[longitudes.length - 1];
+    const barrasOptimizadas: BarraComercial[] = [];
+    let nuevoId = 1;
+
+    for (const bc of barrasComerciales) {
+      const piezasL = bc.cortes.map(c => c.longitud);
+      const todasCabenEnMenor = piezasL.every(l => l <= Lmenor);
+
+      if (todasCabenEnMenor) {
+        const numMenores = contarBarrasFFD(piezasL, Lmenor);
+        if (numMenores * Lmenor < bc.longitudTotal) {
+          // Barras menores ahorran material: reempaquetar
+          const repacked = reempaquetarEnBarras(bc.cortes, Lmenor, nuevoId);
+          barrasOptimizadas.push(...repacked);
+          nuevoId += repacked.length;
+          continue;
+        }
+      }
+
+      barrasOptimizadas.push({ ...bc, id: nuevoId++ });
+    }
+
+    barrasComerciales = barrasOptimizadas;
   }
 
   // Generar nuevos sobrantes

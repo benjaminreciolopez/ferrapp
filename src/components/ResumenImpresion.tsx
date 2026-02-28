@@ -239,21 +239,25 @@ function generarHTML(
     day: "2-digit", month: "2-digit", year: "numeric",
   });
 
-  // ── Datos globales ──
+  // ── Datos globales (soporta mezcla de barras 6m y 12m) ──
   let barrasTotal = 0, pesoTotal = 0, desperdicioTotal = 0, metrosCompra = 0;
   let sobrantesDisponibles = 0, barrasAhorradas = 0;
-  const materialGlobal = new Map<number, { barras: number; peso: number }>();
+  const materialGlobal = new Map<number, { barrasPorLong: Map<number, number>; peso: number }>();
+  const longitudesUsadas = new Set<number>();
 
   for (const [, res] of resultados) {
     for (const r of res.resultadosPorDiametro) {
-      barrasTotal += r.totalBarrasComerciales;
-      const prev = materialGlobal.get(r.diametro) || { barras: 0, peso: 0 };
-      prev.barras += r.totalBarrasComerciales;
+      const prev = materialGlobal.get(r.diametro) || { barrasPorLong: new Map(), peso: 0 };
       prev.peso += r.pesoKg;
-      materialGlobal.set(r.diametro, prev);
       for (const bc of r.barrasComerciales) {
-        if (bc.id > 0) metrosCompra += bc.longitudTotal;
+        if (bc.id > 0) {
+          metrosCompra += bc.longitudTotal;
+          prev.barrasPorLong.set(bc.longitudTotal, (prev.barrasPorLong.get(bc.longitudTotal) || 0) + 1);
+          longitudesUsadas.add(bc.longitudTotal);
+          barrasTotal++;
+        }
       }
+      materialGlobal.set(r.diametro, prev);
     }
     pesoTotal += res.pesoTotal;
     desperdicioTotal += res.desperdicioTotal;
@@ -262,6 +266,8 @@ function generarHTML(
   }
   const despPct = metrosCompra > 0 ? ((desperdicioTotal / metrosCompra) * 100).toFixed(1) : "0";
   const matSorted = [...materialGlobal.entries()].sort((a, b) => a[0] - b[0]);
+  const longsSorted = [...longitudesUsadas].sort((a, b) => b - a); // ej: [12, 6]
+  const hayMezcla = longsSorted.length > 1;
 
   // ── CSS (pantalla + impresion) ──
   const css = `
@@ -327,29 +333,40 @@ td:first-child { text-align: left; }
   </div>
   <div class="header-right">
     <div>Fecha: ${fecha}</div>
-    <div>Barra comercial: ${longitudBarraComercial}m</div>
+    <div>Barras: ${longsSorted.map(l => l + "m").join(" + ")}</div>
     <div>Elementos: ${proyecto.elementos.length}</div>
     <div>FERRAPP v1.0</div>
   </div>
 </div>
 
 <div class="stats">
-  <div class="stat"><div class="stat-val">${barrasTotal}</div><div class="stat-lbl">BARRAS ${longitudBarraComercial}m</div></div>
+  <div class="stat"><div class="stat-val">${barrasTotal}</div><div class="stat-lbl">${hayMezcla
+    ? longsSorted.map(l => { let c = 0; for (const [, v] of materialGlobal) c += (v.barrasPorLong.get(l) || 0); return c + "&times;" + l + "m"; }).join(" + ")
+    : "BARRAS " + longsSorted[0] + "m"}</div></div>
   <div class="stat"><div class="stat-val">${pesoTotal.toFixed(0)} kg</div><div class="stat-lbl">PESO TOTAL</div></div>
   <div class="stat"><div class="stat-val">${despPct}%</div><div class="stat-lbl">DESPERDICIO</div></div>
   <div class="stat"><div class="stat-val">${sobrantesDisponibles}</div><div class="stat-lbl">SOBRANTES</div></div>
   <div class="stat"><div class="stat-val">${barrasAhorradas}</div><div class="stat-lbl">BARRAS AHORRADAS</div></div>
 </div>
 
-<h2>MATERIAL A COMPRAR (barras de ${longitudBarraComercial}m)</h2>
+<h2>MATERIAL A COMPRAR</h2>
 <table class="mat-table">
   <thead><tr>
+    <th></th>
     ${matSorted.map(([d]) => `<th>&oslash;${d}</th>`).join("")}
     <th>TOTAL</th>
   </tr></thead>
   <tbody>
-    <tr>${matSorted.map(([, v]) => `<td><strong>${v.barras}</strong> barras</td>`).join("")}<td><strong>${barrasTotal}</strong> barras</td></tr>
-    <tr>${matSorted.map(([, v]) => `<td>${v.peso.toFixed(0)} kg</td>`).join("")}<td><strong>${pesoTotal.toFixed(0)}</strong> kg</td></tr>
+    ${longsSorted.map(L => {
+      let totalL = 0;
+      const cells = matSorted.map(([, v]) => {
+        const cnt = v.barrasPorLong.get(L) || 0;
+        totalL += cnt;
+        return `<td>${cnt > 0 ? `<strong>${cnt}</strong> barras` : "-"}</td>`;
+      }).join("");
+      return `<tr><td style="font-weight:bold">${L}m</td>${cells}<td><strong>${totalL}</strong> barras</td></tr>`;
+    }).join("")}
+    <tr><td style="font-weight:bold">Peso</td>${matSorted.map(([, v]) => `<td>${v.peso.toFixed(0)} kg</td>`).join("")}<td><strong>${pesoTotal.toFixed(0)}</strong> kg</td></tr>
   </tbody>
 </table>
 
@@ -378,7 +395,9 @@ td:first-child { text-align: left; }
     </tr></thead><tbody>`;
     for (const d of diametros) {
       const cuts = [...globalCuts.get(d)!.values()].sort((a, b) => b.longitud - a.longitud);
-      const barrasCompra = materialGlobal.get(d)?.barras || 0;
+      const matD = materialGlobal.get(d);
+      let barrasCompra = 0;
+      if (matD) for (const c of matD.barrasPorLong.values()) barrasCompra += c;
       html += `<tr style="border-top:2px solid #333;">
         <td rowspan="${cuts.length}" style="font-weight:bold;vertical-align:top;background:#f5f5f5">&oslash;${d}mm<br><small style="color:#666">${barrasCompra} barras</small></td>
         <td style="font-weight:bold">${cuts[0].count}</td>
@@ -481,10 +500,26 @@ td:first-child { text-align: left; }
       <td>Total</td><td>${elBarrasTotal}</td><td>${res.resultadosPorDiametro.reduce((s, r) => s + r.totalPiezas, 0)}</td><td>${elPesoTotal.toFixed(0)}</td><td></td>
     </tr></tbody></table>`;
 
-    let matEl = `<table class="mat-table"><thead><tr><th>&oslash;</th><th>Barras ${longitudBarraComercial}m</th><th>Peso (kg)</th></tr></thead><tbody>`;
+    // Material por elemento: agrupar barras por (diametro, longitud)
+    const elBarrasPorLong = new Map<number, Map<number, number>>();
     for (const r of res.resultadosPorDiametro) {
-      const peso = +(r.totalBarrasComerciales * longitudBarraComercial * (PESO_POR_METRO[r.diametro] || 0)).toFixed(1);
-      matEl += `<tr><td>&oslash;${r.diametro}</td><td>${r.totalBarrasComerciales}</td><td>${peso}</td></tr>`;
+      const dMap = new Map<number, number>();
+      for (const bc of r.barrasComerciales) {
+        if (bc.id > 0) dMap.set(bc.longitudTotal, (dMap.get(bc.longitudTotal) || 0) + 1);
+      }
+      elBarrasPorLong.set(r.diametro, dMap);
+    }
+    const elLongs = [...new Set(Array.from(elBarrasPorLong.values()).flatMap(m => [...m.keys()]))].sort((a, b) => b - a);
+
+    let matEl = `<table class="mat-table"><thead><tr><th>&oslash;</th>${elLongs.map(L => `<th>Barras ${L}m</th>`).join("")}<th>Peso (kg)</th></tr></thead><tbody>`;
+    for (const r of res.resultadosPorDiametro) {
+      const dMap = elBarrasPorLong.get(r.diametro) || new Map();
+      let pesoCompra = 0;
+      for (const [L, cnt] of dMap) pesoCompra += cnt * L * (PESO_POR_METRO[r.diametro] || 0);
+      matEl += `<tr><td>&oslash;${r.diametro}</td>${elLongs.map(L => {
+        const cnt = dMap.get(L) || 0;
+        return `<td>${cnt > 0 ? cnt : "-"}</td>`;
+      }).join("")}<td>${pesoCompra.toFixed(1)}</td></tr>`;
     }
     matEl += `</tbody></table>`;
 
@@ -506,8 +541,11 @@ td:first-child { text-align: left; }
 
       const sorted = [...countByLength.values()].sort((a, b) => b.longitud - a.longitud);
 
+      const dMapR = elBarrasPorLong.get(r.diametro) || new Map();
+      const barDesc = elLongs.filter(L => (dMapR.get(L) || 0) > 0).map(L => `${dMapR.get(L)} barras de ${L}m`).join(" + ");
+
       recuento += `<table class="barras-table"><thead><tr>
-        <th colspan="3" style="text-align:left;background:#555;">&oslash;${r.diametro}mm &mdash; Comprar ${r.totalBarrasComerciales} barras de ${longitudBarraComercial}m &rarr; ${r.totalPiezas} piezas</th>
+        <th colspan="3" style="text-align:left;background:#555;">&oslash;${r.diametro}mm &mdash; Comprar ${barDesc} &rarr; ${r.totalPiezas} piezas</th>
       </tr><tr>
         <th style="width:50px">Cant.</th>
         <th style="text-align:left">Medida</th>
