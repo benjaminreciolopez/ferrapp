@@ -25,17 +25,64 @@ const SOBRANTE_MINIMO = 0.20;
  * - Multiples longitudes de barra comercial (6m, 12m o ambas)
  * - Patas (ganchos) que anaden longitud a cada pieza
  * - Reutilizacion de sobrantes de elementos anteriores
+ *
+ * Cuando hay varias longitudes disponibles, prueba multiples estrategias
+ * (combinada + cada longitud individual) y elige la que minimiza el total
+ * de metros de barra comercial a comprar.
  */
 export function optimizarCortes(
   barrasNecesarias: BarraNecesaria[],
   config: ConfigConstruccion = CONFIG_DEFAULT,
   sobrantesDisponibles: Sobrante[] = []
 ): ResultadoDespieceExtendido {
-  // Longitudes disponibles ordenadas de mayor a menor
   const longitudes = (config.longitudesDisponibles && config.longitudesDisponibles.length > 0)
     ? [...config.longitudesDisponibles].sort((a, b) => b - a)
     : [config.longitudBarraComercial];
-  const Lmax = longitudes[0]; // la mas larga para calculo de solapes
+
+  // Una sola longitud: ejecutar directamente
+  if (longitudes.length <= 1) {
+    return ejecutarEstrategia(barrasNecesarias, config, sobrantesDisponibles, longitudes);
+  }
+
+  // Varias longitudes: probar combinada + cada individual, elegir la mejor
+  const estrategias: number[][] = [
+    longitudes,                      // todas combinadas [12, 6]
+    ...longitudes.map(L => [L]),     // cada una sola [12], [6]
+  ];
+
+  let mejorResultado: ResultadoDespieceExtendido | null = null;
+  let menorCosto = Infinity;
+
+  for (const estrategia of estrategias) {
+    const resultado = ejecutarEstrategia(
+      barrasNecesarias, config, sobrantesDisponibles, estrategia
+    );
+
+    // Metrica: total de metros de barra comercial a comprar (menor = mejor)
+    let metrosCompra = 0;
+    for (const r of resultado.resultadosPorDiametro) {
+      for (const bc of r.barrasComerciales) {
+        if (bc.id > 0) metrosCompra += bc.longitudTotal;
+      }
+    }
+
+    if (metrosCompra < menorCosto) {
+      menorCosto = metrosCompra;
+      mejorResultado = resultado;
+    }
+  }
+
+  return mejorResultado!;
+}
+
+/** Ejecuta la optimizacion completa con un conjunto fijo de longitudes */
+function ejecutarEstrategia(
+  barrasNecesarias: BarraNecesaria[],
+  config: ConfigConstruccion,
+  sobrantesDisponibles: Sobrante[],
+  longitudes: number[]
+): ResultadoDespieceExtendido {
+  const Lmax = Math.max(...longitudes);
 
   // Fase 1: Expandir cantidades y descomponer piezas largas
   const piezasPlanas = expandirPiezas(barrasNecesarias, config, Lmax);
