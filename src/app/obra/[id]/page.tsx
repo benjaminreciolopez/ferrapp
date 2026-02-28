@@ -183,6 +183,47 @@ export default function ObraPage({ params }: { params: Promise<{ id: string }> }
     setProyecto({ ...proyecto });
   };
 
+  // Recalcular todos los elementos con una nueva config (para cambio de barras 6m/12m)
+  const recalcularConConfig = (nuevaConfig: ConfigConstruccion) => {
+    const nuevosResultados = new Map<string, ResultadoDespieceExtendido>();
+    const elementosActualizados = [...proyecto.elementos];
+
+    for (let i = 0; i < elementosActualizados.length; i++) {
+      const el = elementosActualizados[i];
+      const barrasValidas = el.barrasNecesarias.filter((b) => b.longitud > 0 && b.cantidad > 0);
+      if (barrasValidas.length === 0) continue;
+
+      const barrasConEtiqueta = barrasValidas.map((b, idx) => ({
+        ...b,
+        etiqueta: b.etiqueta || `${el.nombre} - Pieza ${idx + 1}`,
+      }));
+
+      // Sobrantes de elementos anteriores
+      const sobrantesDisp: Sobrante[] = [];
+      if (usarSobrantes) {
+        for (let j = 0; j < i; j++) {
+          const resAnterior = nuevosResultados.get(elementosActualizados[j].id);
+          if (resAnterior) {
+            sobrantesDisp.push(...resAnterior.sobrantesNuevos.filter((s) => !s.usado));
+          }
+        }
+      }
+
+      const res = optimizarCortes(barrasConEtiqueta, nuevaConfig, sobrantesDisp);
+      nuevosResultados.set(el.id, res);
+
+      elementosActualizados[i] = {
+        ...el,
+        calculado: true,
+        sobrantesGenerados: res.sobrantesNuevos,
+        sobrantesConsumidos: res.sobrantesUsados.map((s) => s.id),
+      };
+    }
+
+    setResultados(nuevosResultados);
+    setProyecto({ ...proyecto, elementos: elementosActualizados, config: nuevaConfig });
+  };
+
   const resumenGlobal = () => {
     let barrasTotal = 0;
     let pesoTotal = 0;
@@ -401,14 +442,21 @@ export default function ObraPage({ params }: { params: Promise<{ id: string }> }
                             } else {
                               nuevas = [...activas, L].sort((a, b) => a - b);
                             }
-                            setProyecto({
-                              ...proyecto,
-                              config: {
-                                ...config,
-                                longitudesDisponibles: nuevas,
-                                longitudBarraComercial: Math.max(...nuevas),
-                              },
-                            });
+                            const nuevaConfig: ConfigConstruccion = {
+                              ...config,
+                              longitudesDisponibles: nuevas,
+                              longitudBarraComercial: Math.max(...nuevas),
+                            };
+                            // Auto-recalcular si hay elementos ya calculados
+                            const hayCalculados = proyecto.elementos.some((el) => el.calculado);
+                            if (hayCalculados) {
+                              recalcularConConfig(nuevaConfig);
+                            } else {
+                              setProyecto({
+                                ...proyecto,
+                                config: nuevaConfig,
+                              });
+                            }
                           }}
                           className="rounded border-border accent-accent"
                         />
