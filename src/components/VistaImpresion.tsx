@@ -22,9 +22,6 @@ export default function VistaImpresion({
   subtipo,
 }: VistaImpresionProps) {
   const imprimir = () => {
-    const ventana = window.open("", "_blank");
-    if (!ventana) return;
-
     const fecha = new Date().toLocaleDateString("es-ES", {
       day: "2-digit",
       month: "2-digit",
