@@ -370,50 +370,58 @@ function generarBarrasSuperficie(g: GeometriaElemento, subtipo?: string): BarraB
 // ============================================================
 function generarBarrasMuro(g: GeometriaElemento, subtipo?: string): BarraBase[] {
   const alto = g.alto || 3;
-  const esp = g.espaciado || 0.20;
+  const espGlobal = g.espaciado || 0.20;
   const diam = getDiametrosPlantilla(subtipo);
   const barras: BarraBase[] = [];
 
-  // Diametros referencia
-  const dVert = diam["Vertical cara 1"] || diam["Muro vertical exterior"] || diam["Vertical exterior"] || 12;
-  const dHoriz = diam["Horizontal cara 1"] || diam["Muro horizontal exterior"] || diam["Horizontal exterior"] || 10;
-  const dHorq = diam["Horquillas"] || diam["Horquillas muro"] || 8;
+  // Diametros de referencia (plantilla / fallback)
+  const dVertRef = diam["Vertical cara 1"] || diam["Muro vertical exterior"] || diam["Vertical exterior"] || 12;
+  const dHorizRef = diam["Horizontal cara 1"] || diam["Muro horizontal exterior"] || diam["Horizontal exterior"] || 10;
+  const dHorq = g.diametroHorquillas || diam["Horquillas"] || diam["Horquillas muro"] || 8;
 
-  // Generar barras por cada lado
+  // Config por cara (si existe) o fallback a valores de plantilla
+  const ext = g.caraExterior || { diametroVertical: dVertRef, diametroHorizontal: dHorizRef, espaciado: espGlobal };
+  const int = g.caraInterior || { diametroVertical: dVertRef, diametroHorizontal: dHorizRef, espaciado: espGlobal };
+
+  // Generar barras por cada lado — cada cara puede tener Ø y espaciado diferentes
   for (const lado of g.lados) {
-    const cantVert = Math.round(lado.longitud / esp);
-    const cantHoriz = Math.round(alto / esp);
     const nombre = g.lados.length > 1 ? ` ${lado.nombre}` : "";
 
+    const cantVertExt = Math.round(lado.longitud / ext.espaciado);
+    const cantVertInt = Math.round(lado.longitud / int.espaciado);
+    const cantHorizExt = Math.round(alto / ext.espaciado);
+    const cantHorizInt = Math.round(alto / int.espaciado);
+
     barras.push({
       longitud: +alto.toFixed(2),
-      diametro: dVert,
-      cantidad: cantVert,
-      etiqueta: `Vertical exterior${nombre}`,
+      diametro: ext.diametroVertical,
+      cantidad: cantVertExt,
+      etiqueta: `Vert. ext${nombre}`,
     });
     barras.push({
       longitud: +alto.toFixed(2),
-      diametro: dVert,
-      cantidad: cantVert,
-      etiqueta: `Vertical interior${nombre}`,
+      diametro: int.diametroVertical,
+      cantidad: cantVertInt,
+      etiqueta: `Vert. int${nombre}`,
     });
     barras.push({
       longitud: +lado.longitud.toFixed(2),
-      diametro: dHoriz,
-      cantidad: cantHoriz,
-      etiqueta: `Horizontal exterior${nombre}`,
+      diametro: ext.diametroHorizontal,
+      cantidad: cantHorizExt,
+      etiqueta: `Horiz. ext${nombre}`,
     });
     barras.push({
       longitud: +lado.longitud.toFixed(2),
-      diametro: dHoriz,
-      cantidad: cantHoriz,
-      etiqueta: `Horizontal interior${nombre}`,
+      diametro: int.diametroHorizontal,
+      cantidad: cantHorizInt,
+      etiqueta: `Horiz. int${nombre}`,
     });
   }
 
-  // Horquillas: total por area
+  // Horquillas: total por area (usa espaciado mayor de ambas caras para ser conservador)
+  const espHorq = Math.min(ext.espaciado, int.espaciado);
   const areaTotal = g.lados.reduce((s, l) => s + l.longitud * alto, 0);
-  const cantHorquillas = Math.round(areaTotal / (esp * esp));
+  const cantHorquillas = Math.round(areaTotal / (espHorq * espHorq));
   barras.push({
     longitud: 0.30,
     diametro: dHorq,
@@ -426,7 +434,7 @@ function generarBarrasMuro(g: GeometriaElemento, subtipo?: string): BarraBase[] 
     const longitudTotal = g.lados.reduce((s, l) => s + l.longitud, 0);
     const dZap = diam["Zapata ancho"] || 12;
     barras.push(
-      { longitud: 2.00, diametro: dZap, cantidad: Math.round(longitudTotal / esp), etiqueta: "Zapata ancho" },
+      { longitud: 2.00, diametro: dZap, cantidad: Math.round(longitudTotal / espGlobal), etiqueta: "Zapata ancho" },
       { longitud: +longitudTotal.toFixed(2), diametro: dZap, cantidad: 4, etiqueta: "Zapata largo" },
     );
   }

@@ -1,4 +1,12 @@
 import { CategoriaElemento, PlantillaElemento } from "./types";
+import { getEtiquetasCustom } from "./storage";
+
+/** Etiquetas predefinidas + custom mergeadas para una categoría */
+export function getEtiquetasMerged(categoria: CategoriaElemento): { predefinidas: string[]; custom: string[] } {
+  const predefinidas = ETIQUETAS_POR_CATEGORIA[categoria] || [];
+  const custom = (getEtiquetasCustom()[categoria] || []).filter(c => !predefinidas.includes(c));
+  return { predefinidas, custom };
+}
 
 /**
  * Etiquetas predefinidas por categoria.

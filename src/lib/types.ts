@@ -163,6 +163,13 @@ export interface Hueco {
   y?: number;       // posicion Y en metros desde borde inferior
 }
 
+/** Configuracion de armadura por cara de muro */
+export interface ConfigCaraMuro {
+  diametroVertical: number;   // Ø vertical (mm)
+  diametroHorizontal: number; // Ø horizontal (mm)
+  espaciado: number;          // separacion entre barras (m), default 0.20
+}
+
 export interface GeometriaElemento {
   forma: FormaElemento;
   lados: LadoGeometria[];     // lados del elemento
@@ -172,6 +179,11 @@ export interface GeometriaElemento {
   seccionAlto?: number;       // alto seccion (vigas, pilares)
   anchoZuncho?: number;       // ancho zuncho perimetral (metros), reticular
   huecos?: Hueco[];           // huecos rectangulares (escalera, ascensor, etc.)
+  // Muros: armadura por cara
+  caraExterior?: ConfigCaraMuro;
+  caraInterior?: ConfigCaraMuro;
+  diametroHorquillas?: number;  // Ø horquillas (default 8)
+  incluirEsperas?: boolean;     // mostrar recuento de esperas
 }
 
 /** Que tipo de geometria usa cada categoria */

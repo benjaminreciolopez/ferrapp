@@ -7,6 +7,8 @@ import {
   GeometriaElemento,
   LadoGeometria,
   Hueco,
+  ConfigCaraMuro,
+  DIAMETROS_DISPONIBLES,
 } from "@/lib/types";
 import NumInput from "./NumInput";
 import { getTipoGeometria, getLadosForma, getLadosSuperficie, getNombresZonaSuperficie, getGeometriaDefault, resolverEtiquetaLado } from "@/lib/generadores";
@@ -793,6 +795,90 @@ export default function GeometriaInput({
           </div>
         )}
       </div>
+
+      {/* Armadura por cara — muros */}
+      {tipo === "muro" && (() => {
+        const defExt: ConfigCaraMuro = g.caraExterior || { diametroVertical: 12, diametroHorizontal: 10, espaciado: g.espaciado || 0.20 };
+        const defInt: ConfigCaraMuro = g.caraInterior || { diametroVertical: 12, diametroHorizontal: 10, espaciado: g.espaciado || 0.20 };
+        const dHorq = g.diametroHorquillas || 8;
+
+        const updateCara = (cara: "caraExterior" | "caraInterior", field: keyof ConfigCaraMuro, value: number) => {
+          const current = cara === "caraExterior" ? defExt : defInt;
+          updateField({ [cara]: { ...current, [field]: value } });
+        };
+
+        const DiamSelect = ({ value, onChange }: { value: number; onChange: (v: number) => void }) => (
+          <select
+            value={value}
+            onChange={(e) => onChange(Number(e.target.value))}
+            className="bg-surface-light border border-border rounded px-1.5 py-0.5 text-xs text-foreground focus:outline-none focus:border-accent w-14"
+          >
+            {DIAMETROS_DISPONIBLES.map((d) => (
+              <option key={d} value={d}>Ø{d}</option>
+            ))}
+          </select>
+        );
+
+        return (
+          <div className="bg-surface-light/50 border border-border rounded-lg p-3 space-y-2">
+            <label className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide">Armadura por cara</label>
+            <div className="grid grid-cols-2 gap-3">
+              {/* Cara exterior */}
+              <div className="space-y-1">
+                <span className="text-[10px] font-medium text-accent">Cara exterior</span>
+                <div className="flex items-center gap-1 flex-wrap">
+                  <span className="text-[10px] text-gray-400">V:</span>
+                  <DiamSelect value={defExt.diametroVertical} onChange={(v) => updateCara("caraExterior", "diametroVertical", v)} />
+                  <span className="text-[10px] text-gray-400">H:</span>
+                  <DiamSelect value={defExt.diametroHorizontal} onChange={(v) => updateCara("caraExterior", "diametroHorizontal", v)} />
+                  <span className="text-[10px] text-gray-400">@</span>
+                  <NumInput
+                    value={Math.round(defExt.espaciado * 100)}
+                    onChange={(v) => updateCara("caraExterior", "espaciado", (v || 20) / 100)}
+                    decimals={false}
+                    className="bg-surface-light border border-border rounded px-1.5 py-0.5 text-xs w-12 text-foreground focus:outline-none focus:border-accent"
+                  />
+                  <span className="text-[10px] text-gray-500">cm</span>
+                </div>
+              </div>
+              {/* Cara interior */}
+              <div className="space-y-1">
+                <span className="text-[10px] font-medium text-blue-400">Cara interior</span>
+                <div className="flex items-center gap-1 flex-wrap">
+                  <span className="text-[10px] text-gray-400">V:</span>
+                  <DiamSelect value={defInt.diametroVertical} onChange={(v) => updateCara("caraInterior", "diametroVertical", v)} />
+                  <span className="text-[10px] text-gray-400">H:</span>
+                  <DiamSelect value={defInt.diametroHorizontal} onChange={(v) => updateCara("caraInterior", "diametroHorizontal", v)} />
+                  <span className="text-[10px] text-gray-400">@</span>
+                  <NumInput
+                    value={Math.round(defInt.espaciado * 100)}
+                    onChange={(v) => updateCara("caraInterior", "espaciado", (v || 20) / 100)}
+                    decimals={false}
+                    className="bg-surface-light border border-border rounded px-1.5 py-0.5 text-xs w-12 text-foreground focus:outline-none focus:border-accent"
+                  />
+                  <span className="text-[10px] text-gray-500">cm</span>
+                </div>
+              </div>
+            </div>
+            {/* Horquillas + Esperas */}
+            <div className="flex items-center gap-4 pt-1">
+              <div className="flex items-center gap-1">
+                <span className="text-[10px] text-gray-400">Horquillas:</span>
+                <DiamSelect value={dHorq} onChange={(v) => updateField({ diametroHorquillas: v })} />
+              </div>
+              <label className="flex items-center gap-1.5 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={g.incluirEsperas || false}
+                  onChange={(e) => updateField({ incluirEsperas: e.target.checked })}
+                  className="accent-amber-500 w-3.5 h-3.5"
+                />
+                <span className="text-[10px] text-gray-400">Incluir esperas</span>
+              </label>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Huecos — superficies */}
       {tipo === "superficie" && (

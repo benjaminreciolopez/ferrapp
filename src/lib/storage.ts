@@ -90,3 +90,26 @@ export function getProyectoActivo(): string | null {
 export function setProyectoActivo(id: string) {
   localStorage.setItem(ACTIVE_KEY, id);
 }
+
+// ============================================================
+// ETIQUETAS PERSONALIZADAS
+// ============================================================
+const ETIQUETAS_KEY = "ferrapp_etiquetas_custom";
+
+/** Leer todas las etiquetas custom guardadas (por categoría) */
+export function getEtiquetasCustom(): Record<string, string[]> {
+  if (typeof window === "undefined") return {};
+  const raw = localStorage.getItem(ETIQUETAS_KEY);
+  return raw ? JSON.parse(raw) : {};
+}
+
+/** Guardar nueva etiqueta custom para una categoría */
+export function guardarEtiquetaCustom(categoria: string, etiqueta: string) {
+  const todas = getEtiquetasCustom();
+  const lista = todas[categoria] || [];
+  if (!lista.includes(etiqueta)) {
+    lista.push(etiqueta);
+    todas[categoria] = lista;
+    localStorage.setItem(ETIQUETAS_KEY, JSON.stringify(todas));
+  }
+}

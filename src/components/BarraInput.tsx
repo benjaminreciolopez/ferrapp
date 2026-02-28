@@ -2,7 +2,8 @@
 
 import { useState } from "react";
 import { BarraNecesaria, CategoriaElemento, DIAMETROS_DISPONIBLES, SOLAPES_ESTANDAR } from "@/lib/types";
-import { ETIQUETAS_POR_CATEGORIA } from "@/lib/plantillas";
+import { getEtiquetasMerged } from "@/lib/plantillas";
+import { guardarEtiquetaCustom } from "@/lib/storage";
 import NumInput from "./NumInput";
 
 interface BarraInputProps {
@@ -22,8 +23,9 @@ export default function BarraInput({ barra, longitudMax, solapeActual, categoria
   const longitudTotal = barra.longitud + nPatas * lPata;
   const tieneSolape = longitudTotal > longitudMax;
 
-  const etiquetas = ETIQUETAS_POR_CATEGORIA[categoria] || ETIQUETAS_POR_CATEGORIA.libre;
-  const esEtiquetaPredefinida = etiquetas.includes(barra.etiqueta);
+  const { predefinidas, custom } = getEtiquetasMerged(categoria);
+  const todasEtiquetas = [...predefinidas, ...custom];
+  const esEtiquetaPredefinida = todasEtiquetas.includes(barra.etiqueta);
 
   const solapeEstandar = SOLAPES_ESTANDAR[barra.diametro] || 0.50;
   const opcionesSolape = [
@@ -47,9 +49,16 @@ export default function BarraInput({ barra, longitudMax, solapeActual, categoria
             className="bg-surface-light border border-border rounded px-3 py-1.5 text-sm flex-1 text-foreground focus:outline-none focus:border-accent"
           >
             <option value="" disabled>Seleccionar tipo de barra...</option>
-            {etiquetas.map((et) => (
+            {predefinidas.map((et) => (
               <option key={et} value={et}>{et}</option>
             ))}
+            {custom.length > 0 && (
+              <optgroup label="Mis etiquetas">
+                {custom.map((et) => (
+                  <option key={`c_${et}`} value={et}>{et}</option>
+                ))}
+              </optgroup>
+            )}
             <option value="__custom__">Personalizar...</option>
           </select>
         ) : (
@@ -62,6 +71,18 @@ export default function BarraInput({ barra, longitudMax, solapeActual, categoria
               autoFocus={modoCustom}
               className="bg-surface-light border border-border rounded px-3 py-1.5 text-sm flex-1 text-foreground placeholder:text-gray-500 focus:outline-none focus:border-accent"
             />
+            {barra.etiqueta && !esEtiquetaPredefinida && (
+              <button
+                onClick={() => {
+                  guardarEtiquetaCustom(categoria, barra.etiqueta);
+                  setModoCustom(false);
+                }}
+                className="text-green-400 hover:text-green-300 text-[10px] px-1.5 py-0.5 shrink-0 border border-green-700 rounded"
+                title="Guardar etiqueta para reusar"
+              >
+                Guardar
+              </button>
+            )}
             <button
               onClick={() => {
                 setModoCustom(false);

@@ -10,6 +10,7 @@ import {
   Sobrante,
   ResultadoDespieceExtendido,
   CATEGORIAS_INFO,
+  SOLAPES_ESTANDAR,
 } from "@/lib/types";
 import { optimizarCortes } from "@/lib/optimizador";
 import { getProyecto, guardarProyecto, crearElemento, crearBarraInicial } from "@/lib/storage";
@@ -19,7 +20,7 @@ import VistaImpresion from "@/components/VistaImpresion";
 import ResumenImpresion from "@/components/ResumenImpresion";
 import SelectorElemento from "@/components/SelectorElemento";
 import GeometriaInput from "@/components/GeometriaInput";
-import { generarBarrasDesdeGeometria, getGeometriaDefault } from "@/lib/generadores";
+import { generarBarrasDesdeGeometria, getGeometriaDefault, getTipoGeometria } from "@/lib/generadores";
 
 function generarId() {
   return Math.random().toString(36).substring(2, 9);
@@ -565,6 +566,48 @@ export default function ObraPage({ params }: { params: Promise<{ id: string }> }
                   });
                 }}
               />
+
+              {/* Recuento de esperas — solo muros con toggle activo */}
+              {(() => {
+                const g = elemento.geometria;
+                if (!g || !g.incluirEsperas) return null;
+                const tipoGeo = getTipoGeometria(elemento.categoria || "libre", elemento.subtipo);
+                if (tipoGeo !== "muro") return null;
+
+                const espGlobal = g.espaciado || 0.20;
+                const ext = g.caraExterior || { diametroVertical: 12, diametroHorizontal: 10, espaciado: espGlobal };
+                const int = g.caraInterior || { diametroVertical: 12, diametroHorizontal: 10, espaciado: espGlobal };
+
+                let totalExt = 0, totalInt = 0;
+                for (const lado of g.lados) {
+                  totalExt += Math.round(lado.longitud / ext.espaciado);
+                  totalInt += Math.round(lado.longitud / int.espaciado);
+                }
+
+                const solExt = SOLAPES_ESTANDAR[ext.diametroVertical] || 0.50;
+                const solInt = SOLAPES_ESTANDAR[int.diametroVertical] || 0.50;
+
+                return (
+                  <div className="bg-amber-900/20 border border-amber-700/30 rounded-lg p-3">
+                    <h3 className="text-xs font-semibold text-amber-400 uppercase tracking-wide mb-1.5">
+                      Esperas (recuento para losa/cimentacion)
+                    </h3>
+                    <div className="flex gap-6 text-xs text-gray-300">
+                      <div>
+                        <span className="text-amber-400 font-medium">Ext:</span>{" "}
+                        {totalExt} uds. Ø{ext.diametroVertical} × {solExt}m
+                      </div>
+                      <div>
+                        <span className="text-blue-400 font-medium">Int:</span>{" "}
+                        {totalInt} uds. Ø{int.diametroVertical} × {solInt}m
+                      </div>
+                      <div className="text-gray-400">
+                        Total: {totalExt + totalInt} esperas
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
 
               {/* Sobrantes reutilizados */}
               {resultado && resultado.sobrantesUsados.length > 0 && (
