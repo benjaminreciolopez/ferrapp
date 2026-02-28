@@ -72,7 +72,10 @@ function GeometriaSVGInteractivo({ geometria, tipo, getEtiqueta, onHuecoMove }: 
         return { totalW: g.lados[0]?.longitud || 10, totalH: g.lados[1]?.longitud || 8 };
       }
       if (g.forma === "l" && g.lados.length >= 6) {
-        return { totalW: g.lados[0]?.longitud || 10, totalH: g.lados[5]?.longitud || 8 };
+        // totalH = b + d (zonas apiladas: Derecho + Entrante V)
+        const b = g.lados[1]?.longitud || 4;
+        const d = g.lados[3]?.longitud || 4;
+        return { totalW: g.lados[0]?.longitud || 10, totalH: b + d };
       }
       if (g.forma === "u") {
         const maxL = Math.max(...[0, 2, 4].map(i => g.lados[i]?.longitud || 5));
@@ -159,23 +162,29 @@ function GeometriaSVGInteractivo({ geometria, tipo, getEtiqueta, onHuecoMove }: 
     }
 
     if (tipo === "superficie" && g.forma === "l" && g.lados.length >= 6) {
-      const a = g.lados[0].longitud, b = g.lados[1].longitud;
-      const c = g.lados[2].longitud, d = g.lados[3].longitud;
-      const f = g.lados[5].longitud;
-      // Puntos de la L
+      const a = g.lados[0].longitud; // Superior (ancho total arriba)
+      const b = g.lados[1].longitud; // Derecho (alto zona sup)
+      const d = g.lados[3].longitud; // Entrante V (alto zona inf)
+      const e = g.lados[4].longitud; // Inferior (ancho zona inf)
+      const h = b + d; // altura total real = zona sup + zona inf
+      // Puntos L: P0=top-left, P1=top-right, P2=step-outer, P3=step-inner, P4=bottom-right, P5=bottom-left
       const pts = [
-        [0, f], [a, f], [a, f - b], [a - c, f - b], [a - c, d], [0, d], [0, f],
+        [0, h], [a, h], [a, d], [e, d], [e, 0], [0, 0], [0, h],
       ].map(([x, y]) => `${mToSvgX(x)},${mToSvgY(y)}`).join(" ");
+      // Zona superior (linea divisoria punteada)
+      const zonaDivY = mToSvgY(d);
       return (
         <>
           <polygon points={pts} fill={fill} stroke={stroke} strokeWidth="2" />
-          {/* Labels */}
-          <text x={mToSvgX(a / 2)} y={mToSvgY(f) - 6} textAnchor="middle" fontSize="11" fontWeight="bold" fill={stroke}>{getEtiqueta(0)}</text>
-          <text x={mToSvgX(a) + 8} y={mToSvgY(f - b / 2)} textAnchor="start" fontSize="11" fontWeight="bold" fill={stroke}>{getEtiqueta(1)}</text>
-          <text x={mToSvgX(a - c / 2)} y={mToSvgY(f - b) + 14} textAnchor="middle" fontSize="11" fontWeight="bold" fill={stroke}>{getEtiqueta(2)}</text>
-          <text x={mToSvgX(a - c) - 8} y={mToSvgY(f - b + d / 2 + b / 2 - d / 2)} textAnchor="end" fontSize="11" fontWeight="bold" fill={stroke}>{getEtiqueta(3)}</text>
-          <text x={mToSvgX((a - c) / 2)} y={mToSvgY(d) + 14} textAnchor="middle" fontSize="11" fontWeight="bold" fill={stroke}>{getEtiqueta(4)}</text>
-          <text x={mToSvgX(0) - 8} y={mToSvgY(f / 2)} textAnchor="end" fontSize="11" fontWeight="bold" fill={stroke}>{getEtiqueta(5)}</text>
+          {/* Linea divisoria entre zonas */}
+          <line x1={mToSvgX(0)} y1={zonaDivY} x2={mToSvgX(e)} y2={zonaDivY} stroke={stroke} strokeWidth="0.5" strokeDasharray="4,3" opacity="0.3" />
+          {/* Labels por lado */}
+          <text x={mToSvgX(a / 2)} y={mToSvgY(h) - 6} textAnchor="middle" fontSize="11" fontWeight="bold" fill={stroke}>{getEtiqueta(0)}</text>
+          <text x={mToSvgX(a) + 8} y={mToSvgY(d + b / 2)} textAnchor="start" fontSize="11" fontWeight="bold" fill={stroke}>{getEtiqueta(1)}</text>
+          <text x={mToSvgX((a + e) / 2)} y={mToSvgY(d) + 14} textAnchor="middle" fontSize="11" fontWeight="bold" fill={stroke}>{getEtiqueta(2)}</text>
+          <text x={mToSvgX(e) + 8} y={mToSvgY(d / 2)} textAnchor="start" fontSize="11" fontWeight="bold" fill={stroke}>{getEtiqueta(3)}</text>
+          <text x={mToSvgX(e / 2)} y={mToSvgY(0) + 14} textAnchor="middle" fontSize="11" fontWeight="bold" fill={stroke}>{getEtiqueta(4)}</text>
+          <text x={mToSvgX(0) - 8} y={mToSvgY(h / 2)} textAnchor="end" fontSize="11" fontWeight="bold" fill={stroke}>{getEtiqueta(5)}</text>
         </>
       );
     }
@@ -399,7 +408,7 @@ export default function GeometriaInput({
         cy = (g.lados[1]?.longitud || 8) / 2;
       } else if (g.forma === "l" && g.lados.length >= 6) {
         cx = (g.lados[0]?.longitud || 10) / 2;
-        cy = (g.lados[5]?.longitud || 8) / 2;
+        cy = ((g.lados[1]?.longitud || 4) + (g.lados[3]?.longitud || 4)) / 2;
       }
     }
     huecos.push({ nombre: `Hueco ${huecos.length + 1}`, largo: 3, ancho: 1.2, x: +cx.toFixed(2), y: +cy.toFixed(2) });

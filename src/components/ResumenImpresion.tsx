@@ -60,41 +60,38 @@ function generarSVGGeometria(
   // Superficie L (6 lados perimetrales)
   if (tipo === "superficie" && g.forma === "l" && g.lados.length >= 6) {
     const dims = g.lados.map(l => l.longitud);
-    const [la, lb, lc, ld, le, lf] = dims;
-    // Proporcionar al viewBox
-    const totalW = la, totalH = lf;
+    const [la, lb, , ld, le] = dims;
+    // totalH = b + d (zonas apiladas: Derecho + Entrante V) — consistente con generador
+    const totalW = la, totalH = lb + ld;
     const scale = Math.min(150 / totalW, 110 / totalH);
     const ox = 35, oy = 25;
     const w = totalW * scale, h = totalH * scale;
-    const bh = lb * scale; // altura lado derecho
-    const cw = lc * scale; // ancho entrante H
-    const ew = le * scale; // ancho inferior
+    const bh = lb * scale; // altura zona superior (Derecho)
+    const ew = le * scale; // ancho zona inferior (Inferior)
+    const dh = ld * scale; // altura zona inferior (Entrante V)
 
-    // Path del L: P0(ox,oy) → P1(ox+w,oy) → P2(ox+w,oy+bh) → P3(ox+w-cw,oy+bh) → P4(ox+w-cw,oy+h) → P5(ox,oy+h) → close
+    // L: P0=top-left, P1=top-right, P2=step-outer, P3=step-inner, P4=bottom-right, P5=bottom-left
     const pts = [
       [ox, oy], [ox + w, oy], [ox + w, oy + bh],
-      [ox + w - cw, oy + bh], [ox + w - cw, oy + h],
+      [ox + ew, oy + bh], [ox + ew, oy + h],
       [ox, oy + h]
     ];
     const path = pts.map((p, i) => `${i === 0 ? "M" : "L"} ${p[0].toFixed(1)},${p[1].toFixed(1)}`).join(" ") + " Z";
 
-    // Midpoints for labels
-    const mid = (i: number) => {
-      const p1 = pts[i], p2 = pts[(i + 1) % 6];
-      return [(p1[0] + p2[0]) / 2, (p1[1] + p2[1]) / 2];
-    };
+    // Labels posicionados por lado
     const labels = [
-      { pos: mid(0), text: `${lbl(0)}=${la}m`, anchor: "middle", dy: -6, dx: 0 },
-      { pos: mid(1), text: `${lbl(1)}=${lb}m`, anchor: "start", dy: 0, dx: 6 },
-      { pos: mid(2), text: `${lbl(2)}=${lc}m`, anchor: "middle", dy: -6, dx: 0 },
-      { pos: mid(3), text: `${lbl(3)}=${ld}m`, anchor: "start", dy: 0, dx: 6 },
-      { pos: mid(4), text: `${lbl(4)}=${le}m`, anchor: "middle", dy: 14, dx: 0 },
-      { pos: mid(5), text: `${lbl(5)}=${lf}m`, anchor: "end", dy: 0, dx: -6 },
+      { x: ox + w / 2, y: oy - 6, text: `${lbl(0)}=${la}m`, anchor: "middle" },
+      { x: ox + w + 6, y: oy + bh / 2, text: `${lbl(1)}=${lb}m`, anchor: "start" },
+      { x: (ox + w + ox + ew) / 2, y: oy + bh + 10, text: `${lbl(2)}=${+(la - le).toFixed(1)}m`, anchor: "middle" },
+      { x: ox + ew + 6, y: oy + bh + dh / 2, text: `${lbl(3)}=${ld}m`, anchor: "start" },
+      { x: ox + ew / 2, y: oy + h + 12, text: `${lbl(4)}=${le}m`, anchor: "middle" },
+      { x: ox - 6, y: oy + h / 2, text: `${lbl(5)}=${+(lb + ld).toFixed(1)}m`, anchor: "end" },
     ];
 
     return `<svg viewBox="0 0 220 160" width="200" height="140" xmlns="http://www.w3.org/2000/svg">
       <path d="${path}" fill="#f8f8f8" stroke="#333" stroke-width="1.5"/>
-      ${labels.map((l, i) => `<text x="${(l.pos[0] + l.dx).toFixed(1)}" y="${(l.pos[1] + l.dy).toFixed(1)}" text-anchor="${l.anchor}" font-size="9" font-weight="bold" fill="#b45309">${l.text}</text>`).join("\n      ")}
+      <line x1="${ox}" y1="${(oy + bh).toFixed(1)}" x2="${(ox + ew).toFixed(1)}" y2="${(oy + bh).toFixed(1)}" stroke="#333" stroke-width="0.5" stroke-dasharray="3,2" opacity="0.3"/>
+      ${labels.map(l => `<text x="${l.x.toFixed(1)}" y="${l.y.toFixed(1)}" text-anchor="${l.anchor}" font-size="9" font-weight="bold" fill="#b45309">${l.text}</text>`).join("\n      ")}
     </svg>`;
   }
 
