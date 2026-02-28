@@ -16,6 +16,7 @@ import { getProyecto, guardarProyecto, crearElemento, crearBarraInicial } from "
 import BarraInput from "@/components/BarraInput";
 import ResultadoCortes from "@/components/ResultadoCortes";
 import VistaImpresion from "@/components/VistaImpresion";
+import ResumenImpresion from "@/components/ResumenImpresion";
 import SelectorElemento from "@/components/SelectorElemento";
 import GeometriaInput from "@/components/GeometriaInput";
 import { generarBarrasDesdeGeometria, getGeometriaDefault } from "@/lib/generadores";
@@ -99,7 +100,7 @@ export default function ObraPage({ params }: { params: Promise<{ id: string }> }
   const agregarBarra = () => {
     actualizarElemento({
       ...elemento,
-      barrasNecesarias: [...elemento.barrasNecesarias, crearBarraInicial()],
+      barrasNecesarias: [crearBarraInicial(), ...elemento.barrasNecesarias],
     });
   };
 
@@ -285,7 +286,14 @@ export default function ObraPage({ params }: { params: Promise<{ id: string }> }
           {resultados.size > 0 ? (
             <>
               <div className="bg-surface rounded-xl border border-accent/30 p-6">
-                <h2 className="text-lg font-bold text-accent mb-4">Resumen global — {proyecto.nombre}</h2>
+                <div className="flex items-center justify-between mb-4">
+                  <h2 className="text-lg font-bold text-accent">Resumen global — {proyecto.nombre}</h2>
+                  <ResumenImpresion
+                    proyecto={proyecto}
+                    resultados={resultados}
+                    longitudBarraComercial={config.longitudBarraComercial}
+                  />
+                </div>
                 <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
                   <div className="bg-surface-light rounded-lg p-4 text-center">
                     <div className="text-2xl font-bold">{global.barrasTotal}</div>
