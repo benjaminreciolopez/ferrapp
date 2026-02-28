@@ -151,6 +151,7 @@ export type FormaElemento = "rectangular" | "recto" | "l" | "u" | "cerrado" | "c
 export interface LadoGeometria {
   nombre: string;    // "Izquierdo", "Fondo", "Derecho"
   longitud: number;  // metros
+  etiqueta?: string; // label custom ("m1","m2"...) — si vacío usa letra auto (a,b,c)
 }
 
 /** Hueco rectangular en una superficie (escalera, ascensor, patio, etc.) */
@@ -158,6 +159,8 @@ export interface Hueco {
   nombre: string;   // "Escalera", "Ascensor", "Patio"
   largo: number;    // metros
   ancho: number;    // metros
+  x?: number;       // posicion X en metros desde borde izquierdo
+  y?: number;       // posicion Y en metros desde borde inferior
 }
 
 export interface GeometriaElemento {

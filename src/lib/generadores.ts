@@ -6,10 +6,16 @@ import {
   TipoGeometria,
   CATEGORIA_A_GEOMETRIA,
   SUBTIPO_GEOMETRIA_OVERRIDE,
+  LadoGeometria,
 } from "./types";
 import { getPlantilla } from "./plantillas";
 
 type BarraBase = Omit<BarraNecesaria, "id">;
+
+/** Devuelve la etiqueta custom del lado o la letra automática (a,b,c...) */
+export function resolverEtiquetaLado(lado: LadoGeometria, idx: number): string {
+  return lado.etiqueta || String.fromCharCode(97 + idx);
+}
 
 /**
  * Obtiene el tipo de geometria para un subtipo/categoria dados

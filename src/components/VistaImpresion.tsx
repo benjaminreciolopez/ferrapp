@@ -112,10 +112,10 @@ export default function VistaImpresion({
 ${(() => {
       if (!geometria) return "";
       const g = geometria;
-      const letraLado = (i: number) => String.fromCharCode(97 + i);
+      const letraLado = (i: number) => g.lados[i]?.etiqueta || String.fromCharCode(97 + i);
       let html = `<div class="geometria"><strong>GEOMETRIA</strong>`;
       html += `<div class="geo-row"><span class="geo-label">Forma:</span> ${g.forma}${subtipo ? ` (${subtipo.replace(/_/g, " ")})` : ""}</div>`;
-      // Lados con letras
+      // Lados con etiquetas custom
       const ladosStr = g.lados.map((l, i) => `<span class="geo-letter">${letraLado(i)}</span>${l.nombre}: ${l.longitud}m`).join(" &mdash; ");
       html += `<div class="geo-row"><span class="geo-label">Lados:</span> ${ladosStr}</div>`;
       if (g.alto) html += `<div class="geo-row"><span class="geo-label">Alto:</span> ${g.alto}m</div>`;
@@ -123,7 +123,10 @@ ${(() => {
       html += `<div class="geo-row"><span class="geo-label">Separacion:</span> ${Math.round((g.espaciado || 0.20) * 100)}cm</div>`;
       if (g.anchoZuncho) html += `<div class="geo-row"><span class="geo-label">Zuncho perimetral:</span> ${Math.round(g.anchoZuncho * 100)}cm</div>`;
       if (g.huecos && g.huecos.length > 0) {
-        const hStr = g.huecos.map(h => `${h.nombre} (${h.largo}&times;${h.ancho}m)`).join(", ");
+        const hStr = g.huecos.map(h => {
+          const pos = (h.x !== undefined && h.y !== undefined) ? ` @(${h.x},${h.y})` : "";
+          return `${h.nombre} (${h.largo}&times;${h.ancho}m${pos})`;
+        }).join(", ");
         html += `<div class="geo-row"><span class="geo-label">Huecos:</span> ${hStr}</div>`;
       }
       html += `</div>`;

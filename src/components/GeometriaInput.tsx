@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import {
   CategoriaElemento,
   FormaElemento,
@@ -9,8 +9,313 @@ import {
   Hueco,
 } from "@/lib/types";
 import NumInput from "./NumInput";
-import { getTipoGeometria, getLadosForma, getLadosSuperficie, getNombresZonaSuperficie, getGeometriaDefault } from "@/lib/generadores";
+import { getTipoGeometria, getLadosForma, getLadosSuperficie, getNombresZonaSuperficie, getGeometriaDefault, resolverEtiquetaLado } from "@/lib/generadores";
 
+// =============================================
+// EditableLabel — click para editar la etiqueta
+// =============================================
+function EditableLabel({ label, onSave, className }: { label: string; onSave: (v: string) => void; className?: string }) {
+  const [editing, setEditing] = useState(false);
+  const [val, setVal] = useState(label);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => { setVal(label); }, [label]);
+  useEffect(() => { if (editing) inputRef.current?.select(); }, [editing]);
+
+  if (!editing) {
+    return (
+      <span
+        onClick={() => setEditing(true)}
+        title="Click para editar etiqueta"
+        className={`cursor-pointer hover:bg-accent/20 rounded px-0.5 transition-colors ${className || ""}`}
+      >
+        {label}
+      </span>
+    );
+  }
+
+  return (
+    <input
+      ref={inputRef}
+      value={val}
+      onChange={(e) => setVal(e.target.value.slice(0, 6))}
+      onBlur={() => { setEditing(false); onSave(val.trim()); }}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") { setEditing(false); onSave(val.trim()); }
+        if (e.key === "Escape") { setEditing(false); setVal(label); }
+      }}
+      className="bg-accent/20 border border-accent rounded px-1 text-xs font-bold text-accent w-10 text-center focus:outline-none"
+      maxLength={6}
+    />
+  );
+}
+
+// =============================================
+// SVG Interactivo — geometria grande con huecos
+// =============================================
+interface SVGInteractivoProps {
+  geometria: GeometriaElemento;
+  tipo: string;
+  getEtiqueta: (idx: number) => string;
+  onHuecoMove?: (idx: number, x: number, y: number) => void;
+}
+
+function GeometriaSVGInteractivo({ geometria, tipo, getEtiqueta, onHuecoMove }: SVGInteractivoProps) {
+  const svgRef = useRef<SVGSVGElement>(null);
+  const [dragging, setDragging] = useState<number | null>(null);
+  const g = geometria;
+
+  // Calcular dimensiones reales de la geometria
+  const getDimensiones = useCallback((): { totalW: number; totalH: number } => {
+    if (tipo === "superficie") {
+      if (g.forma === "rectangular") {
+        return { totalW: g.lados[0]?.longitud || 10, totalH: g.lados[1]?.longitud || 8 };
+      }
+      if (g.forma === "l" && g.lados.length >= 6) {
+        return { totalW: g.lados[0]?.longitud || 10, totalH: g.lados[5]?.longitud || 8 };
+      }
+      if (g.forma === "u") {
+        const maxL = Math.max(...[0, 2, 4].map(i => g.lados[i]?.longitud || 5));
+        const maxA = Math.max(...[1, 3, 5].map(i => g.lados[i]?.longitud || 5));
+        return { totalW: maxL, totalH: maxA };
+      }
+    }
+    if (tipo === "muro") {
+      const totalL = g.lados.reduce((s, l) => s + l.longitud, 0);
+      return { totalW: totalL, totalH: g.alto || 3 };
+    }
+    return { totalW: 10, totalH: 8 };
+  }, [g, tipo]);
+
+  const { totalW, totalH } = getDimensiones();
+
+  // SVG layout
+  const pad = 40;
+  const svgW = 380, svgH = 260;
+  const drawW = svgW - pad * 2, drawH = svgH - pad * 2;
+  const scaleX = drawW / (totalW || 1);
+  const scaleY = drawH / (totalH || 1);
+  const scale = Math.min(scaleX, scaleY);
+  const shapeW = totalW * scale, shapeH = totalH * scale;
+  const offX = pad + (drawW - shapeW) / 2;
+  const offY = pad + (drawH - shapeH) / 2;
+
+  // Convertir metros a SVG
+  const mToSvgX = (m: number) => offX + m * scale;
+  const mToSvgY = (m: number) => offY + (totalH - m) * scale; // Y invertido
+
+  // Convertir SVG a metros
+  const svgToM = (svgX: number, svgY: number): { mx: number; my: number } => {
+    const mx = Math.max(0, Math.min(totalW, (svgX - offX) / scale));
+    const my = Math.max(0, Math.min(totalH, totalH - (svgY - offY) / scale));
+    return { mx: +mx.toFixed(2), my: +my.toFixed(2) };
+  };
+
+  // Drag hueco
+  const handlePointerDown = (idx: number) => (e: React.PointerEvent) => {
+    e.preventDefault();
+    setDragging(idx);
+    (e.target as SVGElement).setPointerCapture(e.pointerId);
+  };
+
+  const handlePointerMove = (e: React.PointerEvent) => {
+    if (dragging === null || !svgRef.current || !onHuecoMove) return;
+    const rect = svgRef.current.getBoundingClientRect();
+    const svgX = (e.clientX - rect.left) / rect.width * svgW;
+    const svgY = (e.clientY - rect.top) / rect.height * svgH;
+    const { mx, my } = svgToM(svgX, svgY);
+    onHuecoMove(dragging, mx, my);
+  };
+
+  const handlePointerUp = () => setDragging(null);
+
+  // Click en area vacia para colocar ultimo hueco
+  const handleSvgClick = (e: React.MouseEvent) => {
+    if (!onHuecoMove || !svgRef.current || (g.huecos || []).length === 0) return;
+    if ((e.target as SVGElement).closest("[data-hueco]")) return; // no si click en hueco
+    const rect = svgRef.current.getBoundingClientRect();
+    const svgX = (e.clientX - rect.left) / rect.width * svgW;
+    const svgY = (e.clientY - rect.top) / rect.height * svgH;
+    const { mx, my } = svgToM(svgX, svgY);
+    const lastIdx = (g.huecos || []).length - 1;
+    onHuecoMove(lastIdx, mx, my);
+  };
+
+  // Renderizar forma
+  const renderForma = () => {
+    const stroke = "#f59e0b";
+    const fill = "rgba(245,158,11,0.05)";
+
+    if (tipo === "superficie" && g.forma === "rectangular") {
+      const x1 = offX, y1 = offY, w = shapeW, h = shapeH;
+      return (
+        <>
+          <rect x={x1} y={y1} width={w} height={h} fill={fill} stroke={stroke} strokeWidth="2" />
+          {/* Labels en los lados */}
+          <text x={x1 + w / 2} y={y1 - 6} textAnchor="middle" fontSize="12" fontWeight="bold" fill={stroke}>{getEtiqueta(0)} = {g.lados[0]?.longitud}m</text>
+          <text x={x1 + w + 6} y={y1 + h / 2} textAnchor="start" fontSize="12" fontWeight="bold" fill={stroke} transform={`rotate(90,${x1 + w + 6},${y1 + h / 2})`}>{getEtiqueta(1)} = {g.lados[1]?.longitud}m</text>
+        </>
+      );
+    }
+
+    if (tipo === "superficie" && g.forma === "l" && g.lados.length >= 6) {
+      const a = g.lados[0].longitud, b = g.lados[1].longitud;
+      const c = g.lados[2].longitud, d = g.lados[3].longitud;
+      const f = g.lados[5].longitud;
+      // Puntos de la L
+      const pts = [
+        [0, f], [a, f], [a, f - b], [a - c, f - b], [a - c, d], [0, d], [0, f],
+      ].map(([x, y]) => `${mToSvgX(x)},${mToSvgY(y)}`).join(" ");
+      return (
+        <>
+          <polygon points={pts} fill={fill} stroke={stroke} strokeWidth="2" />
+          {/* Labels */}
+          <text x={mToSvgX(a / 2)} y={mToSvgY(f) - 6} textAnchor="middle" fontSize="11" fontWeight="bold" fill={stroke}>{getEtiqueta(0)}</text>
+          <text x={mToSvgX(a) + 8} y={mToSvgY(f - b / 2)} textAnchor="start" fontSize="11" fontWeight="bold" fill={stroke}>{getEtiqueta(1)}</text>
+          <text x={mToSvgX(a - c / 2)} y={mToSvgY(f - b) + 14} textAnchor="middle" fontSize="11" fontWeight="bold" fill={stroke}>{getEtiqueta(2)}</text>
+          <text x={mToSvgX(a - c) - 8} y={mToSvgY(f - b + d / 2 + b / 2 - d / 2)} textAnchor="end" fontSize="11" fontWeight="bold" fill={stroke}>{getEtiqueta(3)}</text>
+          <text x={mToSvgX((a - c) / 2)} y={mToSvgY(d) + 14} textAnchor="middle" fontSize="11" fontWeight="bold" fill={stroke}>{getEtiqueta(4)}</text>
+          <text x={mToSvgX(0) - 8} y={mToSvgY(f / 2)} textAnchor="end" fontSize="11" fontWeight="bold" fill={stroke}>{getEtiqueta(5)}</text>
+        </>
+      );
+    }
+
+    if (tipo === "superficie" && g.forma === "u") {
+      // U = 3 zonas: izq + centro + der
+      const zonas = [];
+      for (let i = 0; i < g.lados.length; i += 2) {
+        zonas.push({ largo: g.lados[i]?.longitud || 5, ancho: g.lados[i + 1]?.longitud || 5 });
+      }
+      const centroW = zonas[1]?.largo || 5;
+      const izqW = zonas[0]?.ancho || 3;
+      const derW = zonas[2]?.ancho || 3;
+      const uTotalW = izqW + centroW + derW;
+      const wingH = zonas[0]?.largo || 5;
+      const centroA = zonas[1]?.ancho || 5;
+      const uTotalH = Math.max(wingH, centroA);
+      const sc = Math.min(drawW / uTotalW, drawH / uTotalH);
+      const oX = pad + (drawW - uTotalW * sc) / 2;
+      const oY = pad + (drawH - uTotalH * sc) / 2;
+
+      const pts = [
+        [0, 0], [izqW, 0], [izqW, wingH - centroA], [izqW + centroW, wingH - centroA],
+        [izqW + centroW, 0], [uTotalW, 0], [uTotalW, uTotalH],
+        [0, uTotalH],
+      ].map(([x, y]) => `${oX + x * sc},${oY + y * sc}`).join(" ");
+
+      return (
+        <>
+          <polygon points={pts} fill={fill} stroke={stroke} strokeWidth="2" />
+          {/* Dashed zone separators */}
+          <line x1={oX + izqW * sc} y1={oY} x2={oX + izqW * sc} y2={oY + uTotalH * sc} stroke={stroke} strokeWidth="0.5" strokeDasharray="4,3" opacity="0.4" />
+          <line x1={oX + (izqW + centroW) * sc} y1={oY} x2={oX + (izqW + centroW) * sc} y2={oY + uTotalH * sc} stroke={stroke} strokeWidth="0.5" strokeDasharray="4,3" opacity="0.4" />
+          {/* Labels */}
+          <text x={oX + izqW * sc / 2} y={oY - 6} textAnchor="middle" fontSize="10" fontWeight="bold" fill={stroke}>{getEtiqueta(1)}</text>
+          <text x={oX - 6} y={oY + uTotalH * sc / 2} textAnchor="end" fontSize="10" fontWeight="bold" fill={stroke}>{getEtiqueta(0)}</text>
+          <text x={oX + (izqW + centroW / 2) * sc} y={oY + uTotalH * sc + 14} textAnchor="middle" fontSize="10" fontWeight="bold" fill={stroke}>{getEtiqueta(2)}</text>
+          <text x={oX + (izqW + centroW / 2) * sc} y={oY + (wingH - centroA) * sc - 4} textAnchor="middle" fontSize="10" fontWeight="bold" fill={stroke}>{getEtiqueta(3)}</text>
+          <text x={oX + uTotalW * sc + 6} y={oY + uTotalH * sc / 2} textAnchor="start" fontSize="10" fontWeight="bold" fill={stroke}>{getEtiqueta(4)}</text>
+          <text x={oX + (izqW + centroW + derW / 2) * sc} y={oY - 6} textAnchor="middle" fontSize="10" fontWeight="bold" fill={stroke}>{getEtiqueta(5)}</text>
+        </>
+      );
+    }
+
+    if (tipo === "muro") {
+      if (g.forma === "recto") {
+        return (
+          <>
+            <rect x={offX} y={offY} width={shapeW} height={shapeH} fill={fill} stroke={stroke} strokeWidth="2" />
+            <text x={offX + shapeW / 2} y={offY - 6} textAnchor="middle" fontSize="12" fontWeight="bold" fill={stroke}>{getEtiqueta(0)} = {g.lados[0]?.longitud}m</text>
+          </>
+        );
+      }
+      // Muro L, U, cerrado — polyline
+      let cx = offX;
+      const segments: { x1: number; y1: number; x2: number; y2: number; idx: number }[] = [];
+      const directions = g.forma === "l" ? [0, -90] : g.forma === "u" ? [0, -90, 0] : [0, -90, 180, 90];
+      let angle = 0;
+      let px = offX, py = offY + shapeH;
+
+      for (let i = 0; i < g.lados.length && i < directions.length; i++) {
+        angle = directions[i];
+        const len = g.lados[i].longitud * scale;
+        const rad = (angle * Math.PI) / 180;
+        const nx = px + Math.cos(rad) * len;
+        const ny = py + Math.sin(rad) * len;
+        segments.push({ x1: px, y1: py, x2: nx, y2: ny, idx: i });
+        px = nx; py = ny;
+      }
+
+      return (
+        <>
+          {segments.map((s, i) => (
+            <g key={i}>
+              <line x1={s.x1} y1={s.y1} x2={s.x2} y2={s.y2} stroke={stroke} strokeWidth="3" />
+              <text x={(s.x1 + s.x2) / 2 + (s.y2 !== s.y1 ? -12 : 0)} y={(s.y1 + s.y2) / 2 + (s.x2 !== s.x1 ? -8 : 0)} textAnchor="middle" fontSize="11" fontWeight="bold" fill={stroke}>{getEtiqueta(s.idx)}</text>
+            </g>
+          ))}
+        </>
+      );
+    }
+
+    return null;
+  };
+
+  // Renderizar huecos
+  const renderHuecos = () => {
+    if (!g.huecos || g.huecos.length === 0 || tipo !== "superficie") return null;
+
+    return g.huecos.map((h, idx) => {
+      const hx = h.x ?? totalW / 2;
+      const hy = h.y ?? totalH / 2;
+      const hw = h.largo * scale;
+      const hh = h.ancho * scale;
+      const sx = mToSvgX(hx) - hw / 2;
+      const sy = mToSvgY(hy) - hh / 2;
+
+      return (
+        <g key={idx} data-hueco={idx}
+          onPointerDown={handlePointerDown(idx)}
+          style={{ cursor: dragging === idx ? "grabbing" : "grab" }}
+        >
+          <rect x={sx} y={sy} width={hw} height={hh}
+            fill="rgba(239,68,68,0.15)" stroke="#ef4444" strokeWidth="1.5" strokeDasharray="4,2" rx="2"
+          />
+          <text x={sx + hw / 2} y={sy + hh / 2 + 4} textAnchor="middle" fontSize="9" fill="#ef4444" fontWeight="bold">{h.nombre}</text>
+          <text x={sx + hw / 2} y={sy + hh / 2 + 14} textAnchor="middle" fontSize="8" fill="#ef4444" opacity="0.7">{h.largo}×{h.ancho}m</text>
+        </g>
+      );
+    });
+  };
+
+  return (
+    <svg
+      ref={svgRef}
+      viewBox={`0 0 ${svgW} ${svgH}`}
+      className="w-full max-w-[400px] bg-surface-light/30 rounded-lg border border-border/30"
+      onClick={handleSvgClick}
+      onPointerMove={handlePointerMove}
+      onPointerUp={handlePointerUp}
+      onPointerLeave={handlePointerUp}
+    >
+      {renderForma()}
+      {renderHuecos()}
+      {/* Ejes de referencia */}
+      {tipo === "superficie" && g.huecos && g.huecos.length > 0 && (
+        <>
+          <text x={offX} y={offY + shapeH + 16} fontSize="8" fill="#666">0</text>
+          <text x={offX + shapeW} y={offY + shapeH + 16} textAnchor="end" fontSize="8" fill="#666">{totalW}m</text>
+          <text x={offX - 4} y={offY + shapeH} textAnchor="end" fontSize="8" fill="#666">0</text>
+          <text x={offX - 4} y={offY + 4} textAnchor="end" fontSize="8" fill="#666">{totalH}m</text>
+        </>
+      )}
+    </svg>
+  );
+}
+
+// =============================================
+// Componente principal
+// =============================================
 interface GeometriaInputProps {
   geometria: GeometriaElemento | undefined;
   categoria: CategoriaElemento;
@@ -74,13 +379,30 @@ export default function GeometriaInput({
     onGeometriaChange({ ...g, lados: nuevos });
   };
 
-  // Letra para identificar cada lado (a, b, c, d...)
-  const letraLado = (idx: number) => String.fromCharCode(97 + idx);
+  const updateLadoEtiqueta = (idx: number, etiqueta: string) => {
+    const nuevos = [...g.lados];
+    nuevos[idx] = { ...nuevos[idx], etiqueta: etiqueta || undefined };
+    onGeometriaChange({ ...g, lados: nuevos });
+  };
+
+  // Etiqueta resuelta: custom o auto-letra
+  const getEtiqueta = (idx: number) => resolverEtiquetaLado(g.lados[idx] || { nombre: "", longitud: 0 }, idx);
 
   // Gestion de huecos
   const addHueco = () => {
     const huecos = [...(g.huecos || [])];
-    huecos.push({ nombre: `Hueco ${huecos.length + 1}`, largo: 3, ancho: 1.2 });
+    // Default al centro de la geometria
+    let cx = 5, cy = 4;
+    if (tipo === "superficie") {
+      if (g.forma === "rectangular") {
+        cx = (g.lados[0]?.longitud || 10) / 2;
+        cy = (g.lados[1]?.longitud || 8) / 2;
+      } else if (g.forma === "l" && g.lados.length >= 6) {
+        cx = (g.lados[0]?.longitud || 10) / 2;
+        cy = (g.lados[5]?.longitud || 8) / 2;
+      }
+    }
+    huecos.push({ nombre: `Hueco ${huecos.length + 1}`, largo: 3, ancho: 1.2, x: +cx.toFixed(2), y: +cy.toFixed(2) });
     onGeometriaChange({ ...g, huecos });
   };
   const removeHueco = (idx: number) => {
@@ -112,16 +434,15 @@ export default function GeometriaInput({
     let lados: LadoGeometria[];
 
     if (forma === "l" && g.forma !== "l") {
-      // Al cambiar a L: crear 6 lados perimetrales coherentes
       const prevLargo = g.lados[0]?.longitud || 10;
       const prevAncho = g.lados[1]?.longitud || 8;
       lados = [
-        { nombre: nombres[0], longitud: prevLargo },                            // Superior (ancho total)
-        { nombre: nombres[1], longitud: +(prevAncho * 0.5).toFixed(1) },        // Derecho (alto parcial)
-        { nombre: nombres[2], longitud: +(prevLargo * 0.5).toFixed(1) },        // Entrante H
-        { nombre: nombres[3], longitud: +(prevAncho * 0.5).toFixed(1) },        // Entrante V
-        { nombre: nombres[4], longitud: +(prevLargo * 0.5).toFixed(1) },        // Inferior (ancho parcial)
-        { nombre: nombres[5], longitud: prevAncho },                            // Izquierdo (alto total)
+        { nombre: nombres[0], longitud: prevLargo },
+        { nombre: nombres[1], longitud: +(prevAncho * 0.5).toFixed(1) },
+        { nombre: nombres[2], longitud: +(prevLargo * 0.5).toFixed(1) },
+        { nombre: nombres[3], longitud: +(prevAncho * 0.5).toFixed(1) },
+        { nombre: nombres[4], longitud: +(prevLargo * 0.5).toFixed(1) },
+        { nombre: nombres[5], longitud: prevAncho },
       ];
     } else {
       lados = nombres.map((nombre, i) => ({
@@ -212,135 +533,144 @@ export default function GeometriaInput({
         </div>
       )}
 
-      {/* SUPERFICIE L: 6 lados perimetrales individuales */}
-      {tipo === "superficie" && g.forma === "l" && (
-        <div className="space-y-2">
-          {/* Diagrama mini + inputs */}
-          <div className="flex gap-3">
-            {/* Mini diagrama L con letras */}
-            <svg viewBox="0 0 100 90" className="w-24 h-20 shrink-0 text-accent/40">
-              <path d="M 5,5 L 95,5 L 95,40 L 50,40 L 50,85 L 5,85 Z"
-                fill="none" stroke="currentColor" strokeWidth="2" />
-              <text x="50" y="3" textAnchor="middle" fontSize="8" fontWeight="bold" fill="#f59e0b">a</text>
-              <text x="98" y="24" textAnchor="start" fontSize="8" fontWeight="bold" fill="#f59e0b">b</text>
-              <text x="73" y="38" textAnchor="middle" fontSize="8" fontWeight="bold" fill="#f59e0b">c</text>
-              <text x="52" y="64" textAnchor="start" fontSize="8" fontWeight="bold" fill="#f59e0b">d</text>
-              <text x="28" y="88" textAnchor="middle" fontSize="8" fontWeight="bold" fill="#f59e0b">e</text>
-              <text x="3" y="48" textAnchor="end" fontSize="8" fontWeight="bold" fill="#f59e0b" transform="rotate(-90,3,48)">f</text>
-            </svg>
-            {/* 6 inputs en grid 3x2 */}
-            <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 flex-1">
-              {g.lados.map((lado, idx) => (
-                <div key={idx} className="flex items-center gap-1">
-                  <span className="text-xs font-bold text-accent w-3">{letraLado(idx)}</span>
-                  <label className="text-xs text-gray-400 w-14 shrink-0">{lado.nombre}:</label>
-                  <NumInput
-                    value={lado.longitud}
-                    onChange={(v) => updateLado(idx, v)}
-                    className="bg-surface-light border border-border rounded px-2 py-1 text-sm w-16 text-foreground focus:outline-none focus:border-accent"
-                  />
-                  <span className="text-xs text-gray-500">m</span>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
+      {/* ===== SVG INTERACTIVO + INPUTS ===== */}
+      {(tipo === "superficie" || tipo === "muro") && (
+        <div className="flex gap-3 flex-col sm:flex-row">
+          {/* SVG grande */}
+          <GeometriaSVGInteractivo
+            geometria={g}
+            tipo={tipo}
+            getEtiqueta={getEtiqueta}
+            onHuecoMove={(idx, x, y) => updateHueco(idx, { x, y })}
+          />
 
-      {/* SUPERFICIE U: diagrama + zonas con letras */}
-      {tipo === "superficie" && g.forma === "u" && (
-        <div className="space-y-2">
-          <div className="flex gap-3">
-            {/* Mini diagrama U con letras */}
-            <svg viewBox="0 0 110 80" className="w-28 h-20 shrink-0 text-accent/40">
-              {/* U shape: left wing + center + right wing */}
-              <path d="M 5,5 L 20,5 L 20,35 L 90,35 L 90,5 L 105,5 L 105,75 L 5,75 Z"
-                fill="none" stroke="currentColor" strokeWidth="2" />
-              {/* Zone labels */}
-              <text x="12" y="50" textAnchor="middle" fontSize="7" fill="#f59e0b" opacity="0.5">Izq</text>
-              <text x="55" y="60" textAnchor="middle" fontSize="7" fill="#f59e0b" opacity="0.5">Centro</text>
-              <text x="98" y="50" textAnchor="middle" fontSize="7" fill="#f59e0b" opacity="0.5">Der</text>
-              {/* Letter labels */}
-              <text x="2" y="42" textAnchor="end" fontSize="8" fontWeight="bold" fill="#f59e0b">a</text>
-              <text x="12" y="3" textAnchor="middle" fontSize="8" fontWeight="bold" fill="#f59e0b">b</text>
-              <text x="55" y="78" textAnchor="middle" fontSize="8" fontWeight="bold" fill="#f59e0b">c</text>
-              <text x="55" y="33" textAnchor="middle" fontSize="8" fontWeight="bold" fill="#f59e0b">d</text>
-              <text x="108" y="42" textAnchor="start" fontSize="8" fontWeight="bold" fill="#f59e0b">e</text>
-              <text x="98" y="3" textAnchor="middle" fontSize="8" fontWeight="bold" fill="#f59e0b">f</text>
-            </svg>
-            {/* Zone inputs */}
-            <div className="flex-1 space-y-1.5">
-              {getZonasSuperficie().map((zona, zIdx) => {
-                const nombresZona = getNombresZonaSuperficie(g.forma);
-                return (
-                  <div key={zIdx} className="flex items-center gap-2 flex-wrap">
-                    {nombresZona.length > 0 && (
-                      <span className="text-[10px] font-bold text-accent/60 w-10">{nombresZona[zIdx]}</span>
-                    )}
-                    <span className="text-xs font-bold text-accent">{letraLado(zona.idx)}</span>
-                    <NumInput
-                      value={zona.largo.longitud}
-                      onChange={(v) => updateLado(zona.idx, v)}
-                      className="bg-surface-light border border-border rounded px-2 py-1 text-sm w-14 text-foreground focus:outline-none focus:border-accent"
+          {/* Panel de inputs */}
+          <div className="flex-1 space-y-2 min-w-0">
+            {/* SUPERFICIE L: 6 lados */}
+            {tipo === "superficie" && g.forma === "l" && (
+              <div className="grid grid-cols-2 gap-x-3 gap-y-1.5">
+                {g.lados.map((lado, idx) => (
+                  <div key={idx} className="flex items-center gap-1">
+                    <EditableLabel
+                      label={getEtiqueta(idx)}
+                      onSave={(v) => updateLadoEtiqueta(idx, v)}
+                      className="text-xs font-bold text-accent w-fit min-w-[12px]"
                     />
-                    <span className="text-[10px] text-gray-500">×</span>
-                    <span className="text-xs font-bold text-accent">{letraLado(zona.idx + 1)}</span>
+                    <label className="text-xs text-gray-400 shrink-0 truncate max-w-[50px]">{lado.nombre}:</label>
                     <NumInput
-                      value={zona.ancho.longitud}
-                      onChange={(v) => updateLado(zona.idx + 1, v)}
-                      className="bg-surface-light border border-border rounded px-2 py-1 text-sm w-14 text-foreground focus:outline-none focus:border-accent"
+                      value={lado.longitud}
+                      onChange={(v) => updateLado(idx, v)}
+                      className="bg-surface-light border border-border rounded px-2 py-1 text-sm w-16 text-foreground focus:outline-none focus:border-accent"
                     />
                     <span className="text-xs text-gray-500">m</span>
                   </div>
-                );
-              })}
-            </div>
-          </div>
-        </div>
-      )}
+                ))}
+              </div>
+            )}
 
-      {/* SUPERFICIE rectangular: zonas con letras */}
-      {tipo === "superficie" && g.forma === "rectangular" && (
-        <div className="space-y-2">
-          {getZonasSuperficie().map((zona, zIdx) => {
-            const nombresZona = getNombresZonaSuperficie(g.forma);
-            return (
-              <div key={zIdx} className="flex items-center gap-3 flex-wrap">
-                {nombresZona.length > 0 && (
-                  <span className="text-[10px] font-bold text-accent/60 w-14">{nombresZona[zIdx]}</span>
-                )}
+            {/* SUPERFICIE U: zonas */}
+            {tipo === "superficie" && g.forma === "u" && (
+              <div className="space-y-1.5">
+                {getZonasSuperficie().map((zona, zIdx) => {
+                  const nombresZona = getNombresZonaSuperficie(g.forma);
+                  return (
+                    <div key={zIdx} className="flex items-center gap-2 flex-wrap">
+                      {nombresZona.length > 0 && (
+                        <span className="text-[10px] font-bold text-accent/60 w-10">{nombresZona[zIdx]}</span>
+                      )}
+                      <EditableLabel label={getEtiqueta(zona.idx)} onSave={(v) => updateLadoEtiqueta(zona.idx, v)} className="text-xs font-bold text-accent" />
+                      <NumInput
+                        value={zona.largo.longitud}
+                        onChange={(v) => updateLado(zona.idx, v)}
+                        className="bg-surface-light border border-border rounded px-2 py-1 text-sm w-14 text-foreground focus:outline-none focus:border-accent"
+                      />
+                      <span className="text-[10px] text-gray-500">×</span>
+                      <EditableLabel label={getEtiqueta(zona.idx + 1)} onSave={(v) => updateLadoEtiqueta(zona.idx + 1, v)} className="text-xs font-bold text-accent" />
+                      <NumInput
+                        value={zona.ancho.longitud}
+                        onChange={(v) => updateLado(zona.idx + 1, v)}
+                        className="bg-surface-light border border-border rounded px-2 py-1 text-sm w-14 text-foreground focus:outline-none focus:border-accent"
+                      />
+                      <span className="text-xs text-gray-500">m</span>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* SUPERFICIE rectangular: zonas */}
+            {tipo === "superficie" && g.forma === "rectangular" && (
+              <div className="space-y-2">
+                {getZonasSuperficie().map((zona, zIdx) => {
+                  const nombresZona = getNombresZonaSuperficie(g.forma);
+                  return (
+                    <div key={zIdx} className="flex items-center gap-3 flex-wrap">
+                      {nombresZona.length > 0 && (
+                        <span className="text-[10px] font-bold text-accent/60 w-14">{nombresZona[zIdx]}</span>
+                      )}
+                      <div className="flex items-center gap-1">
+                        <EditableLabel label={getEtiqueta(zona.idx)} onSave={(v) => updateLadoEtiqueta(zona.idx, v)} className="text-xs font-bold text-accent" />
+                        <label className="text-xs text-gray-400">Largo:</label>
+                        <NumInput
+                          value={zona.largo.longitud}
+                          onChange={(v) => updateLado(zona.idx, v)}
+                          className="bg-surface-light border border-border rounded px-2 py-1 text-sm w-16 text-foreground focus:outline-none focus:border-accent"
+                        />
+                        <span className="text-xs text-gray-500">m</span>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <EditableLabel label={getEtiqueta(zona.idx + 1)} onSave={(v) => updateLadoEtiqueta(zona.idx + 1, v)} className="text-xs font-bold text-accent" />
+                        <label className="text-xs text-gray-400">Ancho:</label>
+                        <NumInput
+                          value={zona.ancho.longitud}
+                          onChange={(v) => updateLado(zona.idx + 1, v)}
+                          className="bg-surface-light border border-border rounded px-2 py-1 text-sm w-16 text-foreground focus:outline-none focus:border-accent"
+                        />
+                        <span className="text-xs text-gray-500">m</span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* MURO: lados */}
+            {tipo === "muro" && (
+              <div className="flex items-center gap-3 flex-wrap">
+                {g.lados.map((lado, idx) => (
+                  <div key={idx} className="flex items-center gap-1">
+                    <EditableLabel label={getEtiqueta(idx)} onSave={(v) => updateLadoEtiqueta(idx, v)} className="text-xs font-bold text-accent" />
+                    <label className="text-xs text-gray-400">{lado.nombre}:</label>
+                    <NumInput
+                      value={lado.longitud}
+                      onChange={(v) => updateLado(idx, v)}
+                      className="bg-surface-light border border-border rounded px-2 py-1 text-sm w-16 text-foreground focus:outline-none focus:border-accent"
+                    />
+                    <span className="text-xs text-gray-500">m</span>
+                  </div>
+                ))}
+                {/* Alto */}
                 <div className="flex items-center gap-1">
-                  <span className="text-xs font-bold text-accent">{letraLado(zona.idx)}</span>
-                  <label className="text-xs text-gray-400">Largo:</label>
+                  <label className="text-xs text-gray-400">Alto:</label>
                   <NumInput
-                    value={zona.largo.longitud}
-                    onChange={(v) => updateLado(zona.idx, v)}
-                    className="bg-surface-light border border-border rounded px-2 py-1 text-sm w-16 text-foreground focus:outline-none focus:border-accent"
-                  />
-                  <span className="text-xs text-gray-500">m</span>
-                </div>
-                <div className="flex items-center gap-1">
-                  <span className="text-xs font-bold text-accent">{letraLado(zona.idx + 1)}</span>
-                  <label className="text-xs text-gray-400">Ancho:</label>
-                  <NumInput
-                    value={zona.ancho.longitud}
-                    onChange={(v) => updateLado(zona.idx + 1, v)}
+                    value={g.alto || 3}
+                    onChange={(v) => updateField({ alto: v })}
                     className="bg-surface-light border border-border rounded px-2 py-1 text-sm w-16 text-foreground focus:outline-none focus:border-accent"
                   />
                   <span className="text-xs text-gray-500">m</span>
                 </div>
               </div>
-            );
-          })}
+            )}
+          </div>
         </div>
       )}
 
-      {/* MURO / LINEAL / PILAR / ESCALERA: lados normales */}
-      {tipo !== "superficie" && (
+      {/* LINEAL / PILAR / ESCALERA: lados normales (sin SVG grande) */}
+      {tipo !== "superficie" && tipo !== "muro" && (
         <div className="flex items-center gap-3 flex-wrap">
           {g.lados.map((lado, idx) => (
             <div key={idx} className="flex items-center gap-1">
-              <span className="text-xs font-bold text-accent w-3">{letraLado(idx)}</span>
+              <EditableLabel label={getEtiqueta(idx)} onSave={(v) => updateLadoEtiqueta(idx, v)} className="text-xs font-bold text-accent" />
               <label className="text-xs text-gray-400">{lado.nombre}:</label>
               <NumInput
                 value={lado.longitud}
@@ -351,8 +681,8 @@ export default function GeometriaInput({
             </div>
           ))}
 
-          {/* Alto (muros, pilares) */}
-          {(tipo === "muro" || tipo === "pilar") && (
+          {/* Alto (pilares) */}
+          {tipo === "pilar" && (
             <div className="flex items-center gap-1">
               <label className="text-xs text-gray-400">Alto:</label>
               <NumInput
@@ -428,7 +758,7 @@ export default function GeometriaInput({
           {(g.huecos || []).length > 0 && (
             <div className="space-y-1.5">
               {(g.huecos || []).map((h, idx) => (
-                <div key={idx} className="flex items-center gap-2 bg-surface-light/50 rounded-lg px-2 py-1.5">
+                <div key={idx} className="flex items-center gap-2 bg-surface-light/50 rounded-lg px-2 py-1.5 flex-wrap">
                   <input
                     type="text"
                     value={h.nombre}
@@ -452,6 +782,22 @@ export default function GeometriaInput({
                       className="bg-surface-light border border-border rounded px-1.5 py-0.5 text-xs w-14 text-foreground focus:outline-none focus:border-accent"
                     />
                   </div>
+                  <div className="flex items-center gap-1">
+                    <label className="text-[10px] text-gray-500">X:</label>
+                    <NumInput
+                      value={h.x ?? 0}
+                      onChange={(v) => updateHueco(idx, { x: v })}
+                      className="bg-surface-light border border-border rounded px-1.5 py-0.5 text-xs w-14 text-foreground focus:outline-none focus:border-accent"
+                    />
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <label className="text-[10px] text-gray-500">Y:</label>
+                    <NumInput
+                      value={h.y ?? 0}
+                      onChange={(v) => updateHueco(idx, { y: v })}
+                      className="bg-surface-light border border-border rounded px-1.5 py-0.5 text-xs w-14 text-foreground focus:outline-none focus:border-accent"
+                    />
+                  </div>
                   <span className="text-[10px] text-gray-500">m</span>
                   <button
                     onClick={() => removeHueco(idx)}
@@ -461,6 +807,7 @@ export default function GeometriaInput({
                   </button>
                 </div>
               ))}
+              <p className="text-[9px] text-gray-500 italic">Click en el diagrama o arrastra los huecos para posicionarlos</p>
             </div>
           )}
         </div>
@@ -480,8 +827,8 @@ export default function GeometriaInput({
           const nB = zw > 0 ? Math.max(b - 2 * zw, 0) : b;
           const nD = zw > 0 ? Math.max(d - 2 * zw, 0) : d;
           const nE = zw > 0 ? Math.max(e - 2 * zw, 0) : e;
-          zonasInfo.push(`Sup: a=${a}m×${Math.round(nB / esp)}uds + b=${b}m×${Math.round(nA / esp)}uds`);
-          zonasInfo.push(`Inf: e=${e}m×${Math.round(nD / esp)}uds + d=${d}m×${Math.round(nE / esp)}uds`);
+          zonasInfo.push(`Sup: ${getEtiqueta(0)}=${a}m×${Math.round(nB / esp)}uds + ${getEtiqueta(1)}=${b}m×${Math.round(nA / esp)}uds`);
+          zonasInfo.push(`Inf: ${getEtiqueta(4)}=${e}m×${Math.round(nD / esp)}uds + ${getEtiqueta(3)}=${d}m×${Math.round(nE / esp)}uds`);
         } else {
           const zonas = getZonasSuperficie();
           const nombresZ = getNombresZonaSuperficie(g.forma);
@@ -492,7 +839,7 @@ export default function GeometriaInput({
             const cantL = Math.round(netA / esp);
             const cantA = Math.round(netL / esp);
             const prefix = nombresZ.length > 0 ? `${nombresZ[i]}: ` : "";
-            const lL = letraLado(z.idx), lA = letraLado(z.idx + 1);
+            const lL = getEtiqueta(z.idx), lA = getEtiqueta(z.idx + 1);
             zonasInfo.push(`${prefix}${lL}=${z.largo.longitud}m×${cantL}uds + ${lA}=${z.ancho.longitud}m×${cantA}uds`);
           }
         }
@@ -500,7 +847,10 @@ export default function GeometriaInput({
         const parts: string[] = [...zonasInfo];
         if (zw > 0) parts.push(`Zuncho: ${Math.round(zw * 100)}cm`);
         if (huecos.length > 0) {
-          const hStr = huecos.map(h => `${h.nombre} ${h.largo}×${h.ancho}m`).join(", ");
+          const hStr = huecos.map(h => {
+            const pos = (h.x !== undefined && h.y !== undefined) ? ` @(${h.x},${h.y})` : "";
+            return `${h.nombre} ${h.largo}×${h.ancho}m${pos}`;
+          }).join(", ");
           parts.push(`Huecos: ${hStr}`);
         }
 
@@ -513,21 +863,21 @@ export default function GeometriaInput({
       {/* Info preview — muro */}
       {tipo === "muro" && (
         <div className="text-[10px] text-gray-600">
-          {g.lados.map((l, i) => `${letraLado(i)}=${l.longitud}m`).join(" + ")}
+          {g.lados.map((l, i) => `${getEtiqueta(i)}=${l.longitud}m`).join(" + ")}
           {g.alto ? ` — Alto ${g.alto}m` : ""}
         </div>
       )}
       {/* Info preview — lineal */}
       {tipo === "lineal" && (
         <div className="text-[10px] text-gray-600">
-          {g.lados.map((l, i) => `${letraLado(i)}=${l.longitud}m`).join(" + ")}
+          {g.lados.map((l, i) => `${getEtiqueta(i)}=${l.longitud}m`).join(" + ")}
           {g.seccionAncho && g.seccionAlto ? ` — Seccion ${g.seccionAncho}×${g.seccionAlto}m` : ""}
         </div>
       )}
       {/* Info preview — pilar */}
       {tipo === "pilar" && (
         <div className="text-[10px] text-gray-600">
-          {g.lados.map((l, i) => `${letraLado(i)}=${l.longitud}m`).join(", ")}
+          {g.lados.map((l, i) => `${getEtiqueta(i)}=${l.longitud}m`).join(", ")}
           {g.alto ? ` — Alto ${g.alto}m` : ""}
           {g.seccionAncho && g.seccionAlto ? ` — Seccion ${g.seccionAncho}×${g.seccionAlto}m` : ""}
         </div>
