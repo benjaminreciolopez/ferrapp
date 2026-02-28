@@ -281,102 +281,18 @@ export default function ObraPage({ params }: { params: Promise<{ id: string }> }
       </div>
 
       {tab === "resumen" ? (
-        /* TAB RESUMEN */
-        <div className="p-4 md:p-8 max-w-6xl mx-auto space-y-6">
+        /* TAB RESUMEN — Vista previa por zonas */
+        <div className="h-[calc(100vh-57px)] overflow-y-auto">
           {resultados.size > 0 ? (
-            <>
-              <div className="bg-surface rounded-xl border border-accent/30 p-6">
-                <div className="flex items-center justify-between mb-4">
-                  <h2 className="text-lg font-bold text-accent">Resumen global — {proyecto.nombre}</h2>
-                  <ResumenImpresion
-                    proyecto={proyecto}
-                    resultados={resultados}
-                    longitudBarraComercial={config.longitudBarraComercial}
-                  />
-                </div>
-                <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-                  <div className="bg-surface-light rounded-lg p-4 text-center">
-                    <div className="text-2xl font-bold">{global.barrasTotal}</div>
-                    <div className="text-xs text-gray-400">
-                      {global.barrasPorLongitud.size > 1 ? global.barrasTexto : `Barras de ${config.longitudBarraComercial}m`}
-                    </div>
-                  </div>
-                  <div className="bg-surface-light rounded-lg p-4 text-center">
-                    <div className="text-2xl font-bold">{global.pesoTotal.toFixed(0)} kg</div>
-                    <div className="text-xs text-gray-400">Peso total</div>
-                  </div>
-                  <div className="bg-surface-light rounded-lg p-4 text-center">
-                    <div className="text-2xl font-bold text-success">
-                      {global.metrosCompra > 0
-                        ? ((global.desperdicioTotal / global.metrosCompra) * 100).toFixed(1)
-                        : 0}%
-                    </div>
-                    <div className="text-xs text-gray-400">Desperdicio</div>
-                  </div>
-                  <div className="bg-surface-light rounded-lg p-4 text-center">
-                    <div className="text-2xl font-bold text-accent">{global.sobrantesDisponibles}</div>
-                    <div className="text-xs text-gray-400">Sobrantes</div>
-                  </div>
-                  <div className="bg-surface-light rounded-lg p-4 text-center">
-                    <div className="text-2xl font-bold text-green-400">{global.barrasAhorradas}</div>
-                    <div className="text-xs text-gray-400">Barras ahorradas</div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Tabla por elemento */}
-              <div className="bg-surface rounded-xl border border-border p-6">
-                <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-wide mb-4">Desglose por elemento</h3>
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="text-gray-400 border-b border-border">
-                      <th className="text-left py-2 px-3">Elemento</th>
-                      <th className="text-right py-2 px-3">Barras</th>
-                      <th className="text-right py-2 px-3">Peso (kg)</th>
-                      <th className="text-right py-2 px-3">Desperdicio</th>
-                      <th className="text-right py-2 px-3">Sobrantes generados</th>
-                      <th className="text-right py-2 px-3">Sobrantes usados</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {proyecto.elementos.map((el) => {
-                      const res = resultados.get(el.id);
-                      if (!res) return (
-                        <tr key={el.id} className="border-b border-border/50">
-                          <td className="py-2 px-3 text-gray-500">{el.nombre}</td>
-                          <td colSpan={5} className="py-2 px-3 text-gray-600 text-center">No calculado</td>
-                        </tr>
-                      );
-                      const barras = res.resultadosPorDiametro.reduce((s, r) => s + r.totalBarrasComerciales, 0);
-                      const metrosCompra = res.resultadosPorDiametro.reduce(
-                        (s, r) => s + r.barrasComerciales.filter(bc => bc.id > 0).reduce((sum, bc) => sum + bc.longitudTotal, 0), 0
-                      );
-                      const pct = metrosCompra > 0 ? ((res.desperdicioTotal / metrosCompra) * 100).toFixed(1) : "0";
-                      return (
-                        <tr key={el.id} className="border-b border-border/50">
-                          <td className="py-2 px-3 font-medium">{el.nombre}</td>
-                          <td className="py-2 px-3 text-right">{barras}</td>
-                          <td className="py-2 px-3 text-right">{res.pesoTotal.toFixed(0)}</td>
-                          <td className="py-2 px-3 text-right">
-                            <span className={Number(pct) < 5 ? "text-success" : Number(pct) < 15 ? "text-accent" : "text-danger"}>
-                              {pct}%
-                            </span>
-                          </td>
-                          <td className="py-2 px-3 text-right">{res.sobrantesNuevos.length}</td>
-                          <td className="py-2 px-3 text-right text-green-400">
-                            {res.sobrantesUsados.length > 0 ? res.sobrantesUsados.length : "-"}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            </>
+            <ResumenImpresion
+              proyecto={proyecto}
+              resultados={resultados}
+              longitudBarraComercial={config.longitudBarraComercial}
+            />
           ) : (
             <div className="text-center py-20 text-gray-500">
               <p className="text-lg mb-2">No hay resultados todavia</p>
-              <p className="text-sm">Calcula los elementos para ver el resumen global</p>
+              <p className="text-sm">Calcula los elementos para ver el resumen</p>
             </div>
           )}
         </div>

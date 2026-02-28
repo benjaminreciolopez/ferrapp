@@ -1,5 +1,6 @@
 "use client";
 
+import { useRef, useEffect, useCallback } from "react";
 import {
   Proyecto,
   ResultadoDespieceExtendido,
@@ -38,7 +39,6 @@ function generarSVGGeometria(
   if (tipo === "superficie" && g.forma === "rectangular") {
     const a = g.lados[0]?.longitud || 5;
     const b = g.lados[1]?.longitud || 5;
-    // Positioned huecos
     const scX = 150 / a, scY = 100 / b;
     const huecosHtml = g.huecos && g.huecos.length > 0 ? g.huecos.map((h) => {
       const hx = h.x ?? a / 2;
@@ -61,16 +61,14 @@ function generarSVGGeometria(
   if (tipo === "superficie" && g.forma === "l" && g.lados.length >= 6) {
     const dims = g.lados.map(l => l.longitud);
     const [la, lb, , ld, le] = dims;
-    // totalH = b + d (zonas apiladas: Derecho + Entrante V) — consistente con generador
     const totalW = la, totalH = lb + ld;
     const scale = Math.min(150 / totalW, 110 / totalH);
     const ox = 35, oy = 25;
     const w = totalW * scale, h = totalH * scale;
-    const bh = lb * scale; // altura zona superior (Derecho)
-    const ew = le * scale; // ancho zona inferior (Inferior)
-    const dh = ld * scale; // altura zona inferior (Entrante V)
+    const bh = lb * scale;
+    const ew = le * scale;
+    const dh = ld * scale;
 
-    // L: P0=top-left, P1=top-right, P2=step-outer, P3=step-inner, P4=bottom-right, P5=bottom-left
     const pts = [
       [ox, oy], [ox + w, oy], [ox + w, oy + bh],
       [ox + ew, oy + bh], [ox + ew, oy + h],
@@ -78,7 +76,6 @@ function generarSVGGeometria(
     ];
     const path = pts.map((p, i) => `${i === 0 ? "M" : "L"} ${p[0].toFixed(1)},${p[1].toFixed(1)}`).join(" ") + " Z";
 
-    // Labels posicionados por lado
     const labels = [
       { x: ox + w / 2, y: oy - 6, text: `${lbl(0)}=${la}m`, anchor: "middle" },
       { x: ox + w + 6, y: oy + bh / 2, text: `${lbl(1)}=${lb}m`, anchor: "start" },
@@ -113,7 +110,6 @@ function generarSVGGeometria(
     const rw = alaDerA * scale;
     const bh = centroA * scale;
 
-    // U path: open at top between arms
     const pts = [
       [ox, oy], [ox + lw, oy], [ox + lw, oy + h - bh],
       [ox + w - rw, oy + h - bh], [ox + w - rw, oy],
@@ -223,7 +219,7 @@ function generarSVGGeometria(
     </svg>`;
   }
 
-  // Fallback genérico: lista de lados
+  // Fallback genérico
   return `<svg viewBox="0 0 220 80" width="200" height="60" xmlns="http://www.w3.org/2000/svg">
     ${g.lados.map((l, i) => `<text x="10" y="${16 + i * 14}" font-size="10" font-weight="bold" fill="#b45309">${lbl(i)} = ${l.longitud}m (${l.nombre})</text>`).join("\n    ")}
   </svg>`;
@@ -231,56 +227,65 @@ function generarSVGGeometria(
 
 
 // ============================================================
-// MAIN COMPONENT
+// HTML GENERATION (shared for preview + print)
 // ============================================================
 
-export default function ResumenImpresion({
-  proyecto,
-  resultados,
-  longitudBarraComercial,
-}: ResumenImpresionProps) {
+function generarHTML(
+  proyecto: Proyecto,
+  resultados: Map<string, ResultadoDespieceExtendido>,
+  longitudBarraComercial: number
+): string {
+  const fecha = new Date().toLocaleDateString("es-ES", {
+    day: "2-digit", month: "2-digit", year: "numeric",
+  });
 
-  const imprimir = () => {
-    const fecha = new Date().toLocaleDateString("es-ES", {
-      day: "2-digit", month: "2-digit", year: "numeric",
-    });
+  // ── Datos globales ──
+  let barrasTotal = 0, pesoTotal = 0, desperdicioTotal = 0, metrosCompra = 0;
+  let sobrantesDisponibles = 0, barrasAhorradas = 0;
+  const materialGlobal = new Map<number, { barras: number; peso: number }>();
 
-    // ── Agregar datos globales ──
-    let barrasTotal = 0, pesoTotal = 0, desperdicioTotal = 0, metrosCompra = 0;
-    let sobrantesDisponibles = 0, barrasAhorradas = 0;
-    const materialGlobal = new Map<number, { barras: number; peso: number }>();
-
-    for (const [, res] of resultados) {
-      for (const r of res.resultadosPorDiametro) {
-        barrasTotal += r.totalBarrasComerciales;
-        const prev = materialGlobal.get(r.diametro) || { barras: 0, peso: 0 };
-        prev.barras += r.totalBarrasComerciales;
-        prev.peso += r.pesoKg;
-        materialGlobal.set(r.diametro, prev);
-        for (const bc of r.barrasComerciales) {
-          if (bc.id > 0) metrosCompra += bc.longitudTotal;
-        }
+  for (const [, res] of resultados) {
+    for (const r of res.resultadosPorDiametro) {
+      barrasTotal += r.totalBarrasComerciales;
+      const prev = materialGlobal.get(r.diametro) || { barras: 0, peso: 0 };
+      prev.barras += r.totalBarrasComerciales;
+      prev.peso += r.pesoKg;
+      materialGlobal.set(r.diametro, prev);
+      for (const bc of r.barrasComerciales) {
+        if (bc.id > 0) metrosCompra += bc.longitudTotal;
       }
-      pesoTotal += res.pesoTotal;
-      desperdicioTotal += res.desperdicioTotal;
-      sobrantesDisponibles += res.sobrantesNuevos.filter(s => !s.usado).length;
-      barrasAhorradas += res.barrasComercialAhorradas;
     }
-    const despPct = metrosCompra > 0 ? ((desperdicioTotal / metrosCompra) * 100).toFixed(1) : "0";
+    pesoTotal += res.pesoTotal;
+    desperdicioTotal += res.desperdicioTotal;
+    sobrantesDisponibles += res.sobrantesNuevos.filter(s => !s.usado).length;
+    barrasAhorradas += res.barrasComercialAhorradas;
+  }
+  const despPct = metrosCompra > 0 ? ((desperdicioTotal / metrosCompra) * 100).toFixed(1) : "0";
+  const matSorted = [...materialGlobal.entries()].sort((a, b) => a[0] - b[0]);
 
-    // Material global ordenado por diámetro
-    const matSorted = [...materialGlobal.entries()].sort((a, b) => a[0] - b[0]);
-
-    // ── CSS ──
-    const css = `
+  // ── CSS (pantalla + impresion) ──
+  const css = `
 * { margin: 0; padding: 0; box-sizing: border-box; }
-body { font-family: Arial, sans-serif; font-size: 10px; color: #000; padding: 8mm; }
-@media print {
-  @page { margin: 8mm; size: A4 portrait; }
-  .page { page-break-after: always; }
-  .page:last-child { page-break-after: auto; }
+body { font-family: Arial, sans-serif; font-size: 10px; color: #000; }
+
+@media screen {
+  body { background: #d1d5db; padding: 20px 12px; }
+  .page {
+    background: white;
+    max-width: 780px;
+    margin: 0 auto 20px auto;
+    padding: 24px 28px;
+    border-radius: 6px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.18);
+  }
 }
-.page { min-height: 100%; }
+@media print {
+  body { background: white; padding: 0; }
+  .page { box-shadow: none; margin: 0; border-radius: 0; padding: 0; page-break-after: always; }
+  .page:last-child { page-break-after: auto; }
+  @page { margin: 8mm; size: A4 portrait; }
+}
+
 h1 { font-size: 16px; margin-bottom: 2px; }
 h2 { font-size: 13px; margin: 10px 0 5px; border-bottom: 2px solid #000; padding-bottom: 2px; }
 h3 { font-size: 11px; margin: 6px 0 3px; }
@@ -311,8 +316,8 @@ td:first-child { text-align: left; }
 .red { color: #dc2626; }
 `;
 
-    // ── PÁGINA 1: RESUMEN GLOBAL ──
-    let html = `<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8">
+  // ── PÁGINA 1: RESUMEN GLOBAL ──
+  let html = `<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8">
 <title>Resumen - ${proyecto.nombre}</title><style>${css}</style></head><body>
 <div class="page">
 <div class="header">
@@ -350,47 +355,46 @@ td:first-child { text-align: left; }
 
 <h2>RECUENTO TOTAL DE PIEZAS A CORTAR</h2>`;
 
-    // Recuento global: agregar todos los cortes de todos los elementos
-    {
-      const globalCuts = new Map<number, Map<string, { longitud: number; count: number }>>();
-      for (const [, res] of resultados) {
-        for (const r of res.resultadosPorDiametro) {
-          if (!globalCuts.has(r.diametro)) globalCuts.set(r.diametro, new Map());
-          const dMap = globalCuts.get(r.diametro)!;
-          for (const bc of r.barrasComerciales) {
-            for (const c of bc.cortes) {
-              const key = c.longitud.toFixed(2);
-              const prev = dMap.get(key);
-              if (prev) { prev.count++; }
-              else { dMap.set(key, { longitud: c.longitud, count: 1 }); }
-            }
+  // Recuento global
+  {
+    const globalCuts = new Map<number, Map<string, { longitud: number; count: number }>>();
+    for (const [, res] of resultados) {
+      for (const r of res.resultadosPorDiametro) {
+        if (!globalCuts.has(r.diametro)) globalCuts.set(r.diametro, new Map());
+        const dMap = globalCuts.get(r.diametro)!;
+        for (const bc of r.barrasComerciales) {
+          for (const c of bc.cortes) {
+            const key = c.longitud.toFixed(2);
+            const prev = dMap.get(key);
+            if (prev) { prev.count++; }
+            else { dMap.set(key, { longitud: c.longitud, count: 1 }); }
           }
         }
       }
-      const diametros = [...globalCuts.keys()].sort((a, b) => a - b);
-      html += `<table class="mat-table"><thead><tr>
-        <th>Diametro</th><th>Cant.</th><th>Medida</th>
-      </tr></thead><tbody>`;
-      for (const d of diametros) {
-        const cuts = [...globalCuts.get(d)!.values()].sort((a, b) => b.longitud - a.longitud);
-        const barrasCompra = materialGlobal.get(d)?.barras || 0;
-        // Primera fila con separador de diámetro
-        html += `<tr style="border-top:2px solid #333;">
-          <td rowspan="${cuts.length}" style="font-weight:bold;vertical-align:top;background:#f5f5f5">&oslash;${d}mm<br><small style="color:#666">${barrasCompra} barras</small></td>
-          <td style="font-weight:bold">${cuts[0].count}</td>
-          <td style="text-align:left">&oslash;${d} a ${cuts[0].longitud.toFixed(2)}m</td>
-        </tr>`;
-        for (let i = 1; i < cuts.length; i++) {
-          html += `<tr>
-            <td style="font-weight:bold">${cuts[i].count}</td>
-            <td style="text-align:left">&oslash;${d} a ${cuts[i].longitud.toFixed(2)}m</td>
-          </tr>`;
-        }
-      }
-      html += `</tbody></table>`;
     }
+    const diametros = [...globalCuts.keys()].sort((a, b) => a - b);
+    html += `<table class="mat-table"><thead><tr>
+      <th>Diametro</th><th>Cant.</th><th>Medida</th>
+    </tr></thead><tbody>`;
+    for (const d of diametros) {
+      const cuts = [...globalCuts.get(d)!.values()].sort((a, b) => b.longitud - a.longitud);
+      const barrasCompra = materialGlobal.get(d)?.barras || 0;
+      html += `<tr style="border-top:2px solid #333;">
+        <td rowspan="${cuts.length}" style="font-weight:bold;vertical-align:top;background:#f5f5f5">&oslash;${d}mm<br><small style="color:#666">${barrasCompra} barras</small></td>
+        <td style="font-weight:bold">${cuts[0].count}</td>
+        <td style="text-align:left">&oslash;${d} a ${cuts[0].longitud.toFixed(2)}m</td>
+      </tr>`;
+      for (let i = 1; i < cuts.length; i++) {
+        html += `<tr>
+          <td style="font-weight:bold">${cuts[i].count}</td>
+          <td style="text-align:left">&oslash;${d} a ${cuts[i].longitud.toFixed(2)}m</td>
+        </tr>`;
+      }
+    }
+    html += `</tbody></table>`;
+  }
 
-    html += `
+  html += `
 <h2>DESGLOSE POR ELEMENTO</h2>
 <table>
   <thead><tr>
@@ -399,135 +403,129 @@ td:first-child { text-align: left; }
   </tr></thead>
   <tbody>`;
 
-    proyecto.elementos.forEach((el, idx) => {
-      const res = resultados.get(el.id);
-      if (!res) {
-        html += `<tr><td>${idx + 1}</td><td style="text-align:left">${el.nombre}</td><td colspan="5" style="color:#999">No calculado</td></tr>`;
-        return;
-      }
-      const b = res.resultadosPorDiametro.reduce((s, r) => s + r.totalBarrasComerciales, 0);
-      const mc = res.resultadosPorDiametro.reduce(
-        (s, r) => s + r.barrasComerciales.filter(bc => bc.id > 0).reduce((sum, bc) => sum + bc.longitudTotal, 0), 0
-      );
-      const pct = mc > 0 ? ((res.desperdicioTotal / mc) * 100).toFixed(1) : "0";
-      const catNombre = el.categoria ? CATEGORIAS_INFO[el.categoria]?.nombre || el.categoria : "-";
-      const pctClass = Number(pct) < 5 ? "green" : Number(pct) < 15 ? "amber" : "red";
-      html += `<tr>
-        <td>${idx + 1}</td>
-        <td style="text-align:left;font-weight:bold">${el.nombre}</td>
-        <td>${catNombre}${el.subtipo ? `<br><small>${el.subtipo.replace(/_/g, " ")}</small>` : ""}</td>
-        <td>${b}</td>
-        <td>${res.pesoTotal.toFixed(0)}</td>
-        <td class="${pctClass}">${pct}%</td>
-        <td>${res.sobrantesNuevos.length}</td>
-      </tr>`;
-    });
+  proyecto.elementos.forEach((el, idx) => {
+    const res = resultados.get(el.id);
+    if (!res) {
+      html += `<tr><td>${idx + 1}</td><td style="text-align:left">${el.nombre}</td><td colspan="5" style="color:#999">No calculado</td></tr>`;
+      return;
+    }
+    const b = res.resultadosPorDiametro.reduce((s, r) => s + r.totalBarrasComerciales, 0);
+    const mc = res.resultadosPorDiametro.reduce(
+      (s, r) => s + r.barrasComerciales.filter(bc => bc.id > 0).reduce((sum, bc) => sum + bc.longitudTotal, 0), 0
+    );
+    const pct = mc > 0 ? ((res.desperdicioTotal / mc) * 100).toFixed(1) : "0";
+    const catNombre = el.categoria ? CATEGORIAS_INFO[el.categoria]?.nombre || el.categoria : "-";
+    const pctClass = Number(pct) < 5 ? "green" : Number(pct) < 15 ? "amber" : "red";
+    html += `<tr>
+      <td>${idx + 1}</td>
+      <td style="text-align:left;font-weight:bold">${el.nombre}</td>
+      <td>${catNombre}${el.subtipo ? `<br><small>${el.subtipo.replace(/_/g, " ")}</small>` : ""}</td>
+      <td>${b}</td>
+      <td>${res.pesoTotal.toFixed(0)}</td>
+      <td class="${pctClass}">${pct}%</td>
+      <td>${res.sobrantesNuevos.length}</td>
+    </tr>`;
+  });
 
-    html += `</tbody></table>
+  html += `</tbody></table>
 <div class="footer"><span>FERRAPP &mdash; ${proyecto.nombre}</span><span>${fecha}</span></div>
 </div>`;
 
-    // ── PÁGINAS POR ELEMENTO ──
-    const totalPages = 1 + proyecto.elementos.filter(el => resultados.has(el.id)).length;
+  // ── PÁGINAS POR ELEMENTO ──
+  const totalPages = 1 + proyecto.elementos.filter(el => resultados.has(el.id)).length;
 
-    let pageNum = 1;
-    for (const el of proyecto.elementos) {
-      const res = resultados.get(el.id);
-      if (!res) continue;
-      pageNum++;
+  let pageNum = 1;
+  for (const el of proyecto.elementos) {
+    const res = resultados.get(el.id);
+    if (!res) continue;
+    pageNum++;
 
-      const catNombre = el.categoria ? CATEGORIAS_INFO[el.categoria]?.nombre || el.categoria : "-";
-      const subLabel = el.subtipo ? el.subtipo.replace(/_/g, " ") : "";
+    const catNombre = el.categoria ? CATEGORIAS_INFO[el.categoria]?.nombre || el.categoria : "-";
+    const subLabel = el.subtipo ? el.subtipo.replace(/_/g, " ") : "";
 
-      // SVG del diagrama (fallback a "libre" si no hay categoria)
-      const svgDiagram = el.geometria
-        ? generarSVGGeometria(el.geometria, el.categoria || "libre", el.subtipo)
-        : '<div style="color:#999;font-size:10px;">Sin geometria</div>';
+    const svgDiagram = el.geometria
+      ? generarSVGGeometria(el.geometria, el.categoria || "libre", el.subtipo)
+      : '<div style="color:#999;font-size:10px;">Sin geometria</div>';
 
-      // Metadata de geometria
-      let geoMeta = "";
-      if (el.geometria) {
-        const g = el.geometria;
-        geoMeta += `<div><span class="label">Forma:</span> ${g.forma}</div>`;
-        geoMeta += `<div><span class="label">Lados:</span> ${g.lados.map((l, i) => `<span class="amber">${letraLado(i, l)}</span>=${l.longitud}m`).join(", ")}</div>`;
-        if (g.alto) geoMeta += `<div><span class="label">Alto:</span> ${g.alto}m</div>`;
-        if (g.seccionAncho && g.seccionAlto) geoMeta += `<div><span class="label">Seccion:</span> ${g.seccionAncho}&times;${g.seccionAlto}m</div>`;
-        geoMeta += `<div><span class="label">Separacion:</span> ${Math.round((g.espaciado || 0.20) * 100)}cm</div>`;
-        if (g.anchoZuncho) geoMeta += `<div><span class="label">Zuncho:</span> ${Math.round(g.anchoZuncho * 100)}cm</div>`;
-        if (g.huecos && g.huecos.length > 0) {
-          geoMeta += `<div><span class="label">Huecos:</span> ${g.huecos.map(h => {
-            const pos = (h.x !== undefined && h.y !== undefined) ? ` @(${h.x},${h.y})` : "";
-            return `${h.nombre} ${h.largo}&times;${h.ancho}m${pos}`;
-          }).join(", ")}</div>`;
-        }
+    let geoMeta = "";
+    if (el.geometria) {
+      const g = el.geometria;
+      geoMeta += `<div><span class="label">Forma:</span> ${g.forma}</div>`;
+      geoMeta += `<div><span class="label">Lados:</span> ${g.lados.map((l, i) => `<span class="amber">${letraLado(i, l)}</span>=${l.longitud}m`).join(", ")}</div>`;
+      if (g.alto) geoMeta += `<div><span class="label">Alto:</span> ${g.alto}m</div>`;
+      if (g.seccionAncho && g.seccionAlto) geoMeta += `<div><span class="label">Seccion:</span> ${g.seccionAncho}&times;${g.seccionAlto}m</div>`;
+      geoMeta += `<div><span class="label">Separacion:</span> ${Math.round((g.espaciado || 0.20) * 100)}cm</div>`;
+      if (g.anchoZuncho) geoMeta += `<div><span class="label">Zuncho:</span> ${Math.round(g.anchoZuncho * 100)}cm</div>`;
+      if (g.huecos && g.huecos.length > 0) {
+        geoMeta += `<div><span class="label">Huecos:</span> ${g.huecos.map(h => {
+          const pos = (h.x !== undefined && h.y !== undefined) ? ` @(${h.x},${h.y})` : "";
+          return `${h.nombre} ${h.largo}&times;${h.ancho}m${pos}`;
+        }).join(", ")}</div>`;
       }
+    }
 
-      // Tabla resumen por diámetro
-      let diaTable = `<table><thead><tr><th>&oslash;</th><th>Barras</th><th>Piezas</th><th>Peso (kg)</th><th>Desp.</th></tr></thead><tbody>`;
-      let elBarrasTotal = 0, elPesoTotal = 0;
-      for (const r of res.resultadosPorDiametro) {
-        elBarrasTotal += r.totalBarrasComerciales;
-        elPesoTotal += r.pesoKg;
-        diaTable += `<tr>
-          <td>&oslash;${r.diametro}</td>
-          <td>${r.totalBarrasComerciales}</td>
-          <td>${r.totalPiezas}</td>
-          <td>${r.pesoKg.toFixed(1)}</td>
-          <td>${r.porcentajeDesperdicio}%</td>
-        </tr>`;
-      }
-      diaTable += `<tr style="font-weight:bold;border-top:2px solid #333;">
-        <td>Total</td><td>${elBarrasTotal}</td><td>${res.resultadosPorDiametro.reduce((s, r) => s + r.totalPiezas, 0)}</td><td>${elPesoTotal.toFixed(0)}</td><td></td>
-      </tr></tbody></table>`;
+    let diaTable = `<table><thead><tr><th>&oslash;</th><th>Barras</th><th>Piezas</th><th>Peso (kg)</th><th>Desp.</th></tr></thead><tbody>`;
+    let elBarrasTotal = 0, elPesoTotal = 0;
+    for (const r of res.resultadosPorDiametro) {
+      elBarrasTotal += r.totalBarrasComerciales;
+      elPesoTotal += r.pesoKg;
+      diaTable += `<tr>
+        <td>&oslash;${r.diametro}</td>
+        <td>${r.totalBarrasComerciales}</td>
+        <td>${r.totalPiezas}</td>
+        <td>${r.pesoKg.toFixed(1)}</td>
+        <td>${r.porcentajeDesperdicio}%</td>
+      </tr>`;
+    }
+    diaTable += `<tr style="font-weight:bold;border-top:2px solid #333;">
+      <td>Total</td><td>${elBarrasTotal}</td><td>${res.resultadosPorDiametro.reduce((s, r) => s + r.totalPiezas, 0)}</td><td>${elPesoTotal.toFixed(0)}</td><td></td>
+    </tr></tbody></table>`;
 
-      // Material a comprar del elemento
-      let matEl = `<table class="mat-table"><thead><tr><th>&oslash;</th><th>Barras ${longitudBarraComercial}m</th><th>Peso (kg)</th></tr></thead><tbody>`;
-      for (const r of res.resultadosPorDiametro) {
-        const peso = +(r.totalBarrasComerciales * longitudBarraComercial * (PESO_POR_METRO[r.diametro] || 0)).toFixed(1);
-        matEl += `<tr><td>&oslash;${r.diametro}</td><td>${r.totalBarrasComerciales}</td><td>${peso}</td></tr>`;
-      }
-      matEl += `</tbody></table>`;
+    let matEl = `<table class="mat-table"><thead><tr><th>&oslash;</th><th>Barras ${longitudBarraComercial}m</th><th>Peso (kg)</th></tr></thead><tbody>`;
+    for (const r of res.resultadosPorDiametro) {
+      const peso = +(r.totalBarrasComerciales * longitudBarraComercial * (PESO_POR_METRO[r.diametro] || 0)).toFixed(1);
+      matEl += `<tr><td>&oslash;${r.diametro}</td><td>${r.totalBarrasComerciales}</td><td>${peso}</td></tr>`;
+    }
+    matEl += `</tbody></table>`;
 
-      // ── Recuento de piezas a cortar (agrupado por diámetro y medida) ──
-      let recuento = "";
-      for (const r of res.resultadosPorDiametro) {
-        // Contar TODOS los cortes agrupados por longitud
-        const countByLength = new Map<string, { longitud: number; count: number; etiquetas: string[] }>();
-        for (const bc of r.barrasComerciales) {
-          for (const c of bc.cortes) {
-            const key = c.longitud.toFixed(2);
-            const prev = countByLength.get(key);
-            if (prev) {
-              prev.count++;
-              if (!prev.etiquetas.includes(c.etiqueta)) prev.etiquetas.push(c.etiqueta);
-            } else {
-              countByLength.set(key, { longitud: c.longitud, count: 1, etiquetas: [c.etiqueta] });
-            }
+    let recuento = "";
+    for (const r of res.resultadosPorDiametro) {
+      const countByLength = new Map<string, { longitud: number; count: number; etiquetas: string[] }>();
+      for (const bc of r.barrasComerciales) {
+        for (const c of bc.cortes) {
+          const key = c.longitud.toFixed(2);
+          const prev = countByLength.get(key);
+          if (prev) {
+            prev.count++;
+            if (!prev.etiquetas.includes(c.etiqueta)) prev.etiquetas.push(c.etiqueta);
+          } else {
+            countByLength.set(key, { longitud: c.longitud, count: 1, etiquetas: [c.etiqueta] });
           }
         }
-
-        const sorted = [...countByLength.values()].sort((a, b) => b.longitud - a.longitud);
-
-        recuento += `<table class="barras-table"><thead><tr>
-          <th colspan="3" style="text-align:left;background:#555;">&oslash;${r.diametro}mm &mdash; Comprar ${r.totalBarrasComerciales} barras de ${longitudBarraComercial}m &rarr; ${r.totalPiezas} piezas</th>
-        </tr><tr>
-          <th style="width:50px">Cant.</th>
-          <th style="text-align:left">Medida</th>
-          <th style="text-align:left">Descripcion</th>
-        </tr></thead><tbody>`;
-
-        for (const item of sorted) {
-          recuento += `<tr>
-            <td style="text-align:center;font-weight:bold">${item.count}</td>
-            <td style="text-align:left;font-weight:bold">&oslash;${r.diametro} a ${item.longitud.toFixed(2)}m</td>
-            <td style="text-align:left;color:#888;font-size:8px">${item.etiquetas.join(", ")}</td>
-          </tr>`;
-        }
-
-        recuento += `</tbody></table>`;
       }
 
-      html += `
+      const sorted = [...countByLength.values()].sort((a, b) => b.longitud - a.longitud);
+
+      recuento += `<table class="barras-table"><thead><tr>
+        <th colspan="3" style="text-align:left;background:#555;">&oslash;${r.diametro}mm &mdash; Comprar ${r.totalBarrasComerciales} barras de ${longitudBarraComercial}m &rarr; ${r.totalPiezas} piezas</th>
+      </tr><tr>
+        <th style="width:50px">Cant.</th>
+        <th style="text-align:left">Medida</th>
+        <th style="text-align:left">Descripcion</th>
+      </tr></thead><tbody>`;
+
+      for (const item of sorted) {
+        recuento += `<tr>
+          <td style="text-align:center;font-weight:bold">${item.count}</td>
+          <td style="text-align:left;font-weight:bold">&oslash;${r.diametro} a ${item.longitud.toFixed(2)}m</td>
+          <td style="text-align:left;color:#888;font-size:8px">${item.etiquetas.join(", ")}</td>
+        </tr>`;
+      }
+
+      recuento += `</tbody></table>`;
+    }
+
+    html += `
 <div class="page">
 <div class="header">
   <div>
@@ -558,45 +556,71 @@ ${recuento}
 
 <div class="footer"><span>FERRAPP &mdash; ${proyecto.nombre} / ${el.nombre}</span><span>${fecha}</span></div>
 </div>`;
+  }
+
+  html += `</body></html>`;
+  return html;
+}
+
+
+// ============================================================
+// MAIN COMPONENT — Vista previa + boton imprimir
+// ============================================================
+
+export default function ResumenImpresion({
+  proyecto,
+  resultados,
+  longitudBarraComercial,
+}: ResumenImpresionProps) {
+  const iframeRef = useRef<HTMLIFrameElement>(null);
+
+  const ajustarAltura = useCallback(() => {
+    const body = iframeRef.current?.contentDocument?.body;
+    if (body) {
+      iframeRef.current!.style.height = body.scrollHeight + 40 + "px";
     }
+  }, []);
 
-    html += `</body></html>`;
-
-    // ── Imprimir via iframe oculto ──
-    let iframe = document.getElementById("ferrapp-resumen-frame") as HTMLIFrameElement | null;
-    if (!iframe) {
-      iframe = document.createElement("iframe");
-      iframe.id = "ferrapp-resumen-frame";
-      iframe.style.position = "fixed";
-      iframe.style.right = "0";
-      iframe.style.bottom = "0";
-      iframe.style.width = "0";
-      iframe.style.height = "0";
-      iframe.style.border = "none";
-      document.body.appendChild(iframe);
-    }
-
-    const doc = iframe.contentDocument || iframe.contentWindow?.document;
+  useEffect(() => {
+    const html = generarHTML(proyecto, resultados, longitudBarraComercial);
+    const doc = iframeRef.current?.contentDocument || iframeRef.current?.contentWindow?.document;
     if (!doc) return;
     doc.open();
     doc.write(html);
     doc.close();
 
-    setTimeout(() => {
-      iframe!.contentWindow?.print();
-    }, 500);
+    // Ajustar altura tras renderizar
+    const t1 = setTimeout(ajustarAltura, 150);
+    const t2 = setTimeout(ajustarAltura, 500);
+    return () => { clearTimeout(t1); clearTimeout(t2); };
+  }, [proyecto, resultados, longitudBarraComercial, ajustarAltura]);
+
+  const imprimir = () => {
+    iframeRef.current?.contentWindow?.print();
   };
 
   return (
-    <button
-      onClick={imprimir}
-      className="flex items-center gap-2 bg-accent hover:bg-accent-dark text-black font-medium py-2 px-4 rounded-lg text-sm transition-colors"
-    >
-      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M6 9V2h12v7M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2"/>
-        <rect x="6" y="14" width="12" height="8"/>
-      </svg>
-      Imprimir resumen
-    </button>
+    <div className="relative w-full">
+      {/* Barra sticky con boton imprimir */}
+      <div className="sticky top-0 z-10 flex items-center justify-between px-4 py-2 bg-background/90 backdrop-blur-sm border-b border-border">
+        <span className="text-sm text-gray-400">Vista previa del resumen</span>
+        <button
+          onClick={imprimir}
+          className="flex items-center gap-2 bg-accent hover:bg-accent-dark text-black font-medium py-2 px-4 rounded-lg text-sm transition-colors"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M6 9V2h12v7M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2"/>
+            <rect x="6" y="14" width="12" height="8"/>
+          </svg>
+          Imprimir resumen
+        </button>
+      </div>
+      {/* Iframe visible con preview */}
+      <iframe
+        ref={iframeRef}
+        className="w-full border-0"
+        style={{ minHeight: "600px" }}
+      />
+    </div>
   );
 }
