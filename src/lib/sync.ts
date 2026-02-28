@@ -53,12 +53,14 @@ function saveLocalProyectos(proyectos: Proyecto[]) {
 
 /** Marca un proyecto como "pendiente de push" */
 export function markDirty(projectId: string) {
+  if (!supabase) return;
   dirtyProjects.add(projectId);
   debouncedPush();
 }
 
 /** Push inmediato de soft-delete */
 export async function markDeleted(projectId: string) {
+  if (!supabase) return;
   try {
     await supabase
       .from("ferrapp_proyectos")
@@ -81,7 +83,7 @@ function debouncedPush() {
 }
 
 async function pushDirty() {
-  if (dirtyProjects.size === 0 || syncInProgress) return;
+  if (!supabase || dirtyProjects.size === 0 || syncInProgress) return;
   syncInProgress = true;
   setSyncStatus("syncing");
 
@@ -124,6 +126,7 @@ async function pushDirty() {
 // PULL FROM CLOUD
 // ============================================================
 export async function pullFromCloud(): Promise<{ pulled: number; pushed: number }> {
+  if (!supabase) return { pulled: 0, pushed: 0 };
   if (!navigator.onLine) {
     setSyncStatus("offline");
     return { pulled: 0, pushed: 0 };
@@ -178,7 +181,6 @@ export async function pullFromCloud(): Promise<{ pulled: number; pushed: number 
     // Reconstruir array local
     if (localChanged) {
       // Combinar: los remotos actualizados + los locales que no estaban en remoto
-      const remoteIds = new Set(remoteRows.map((r) => r.id));
       const updated = getLocalProyectos().map((p) => {
         // Si estaba en remoto y fue actualizado, usar el remoto
         for (const row of remoteRows) {
@@ -231,7 +233,7 @@ export async function pullFromCloud(): Promise<{ pulled: number; pushed: number 
 // ETIQUETAS SYNC
 // ============================================================
 export async function syncEtiquetas() {
-  if (!navigator.onLine) return;
+  if (!supabase || !navigator.onLine) return;
 
   try {
     // Pull remoto
@@ -279,6 +281,12 @@ let initialized = false;
 export function initSync() {
   if (typeof window === "undefined" || initialized) return;
   initialized = true;
+
+  // Sin Supabase → no sync, solo localStorage
+  if (!supabase) {
+    console.info("[sync] Supabase no configurado, modo solo-local");
+    return;
+  }
 
   // Estado online/offline
   window.addEventListener("online", () => {
