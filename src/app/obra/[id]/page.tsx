@@ -28,7 +28,10 @@ function generarId() {
 }
 
 /** Etiquetas de barras longitudinales en elementos lineales (vigas/zunchos) */
-const ETIQUETAS_LONGITUDINALES = ["Barras abajo", "Barras arriba", "Refuerzo negativo", "Portaestribos"];
+const ETIQUETAS_LONGITUDINALES = [
+  "Barras abajo", "Barras arriba", "Barras centrales", "Barras longitudinales",
+  "Barras principales", "Barras de piel", "Refuerzo negativo", "Portaestribos",
+];
 
 /** Determina si una barra es longitudinal (vs estribo) */
 function esBarraLongitudinal(etiqueta: string): boolean {
@@ -235,9 +238,18 @@ export default function ObraPage({ params }: { params: Promise<{ id: string }> }
   };
 
   const agregarBarra = () => {
+    const g = elemento.geometria;
+    const longDefault = g?.lados[0]?.longitud || 5.0;
+    const nuevaBarra: BarraNecesaria = {
+      id: generarId(),
+      longitud: +longDefault.toFixed(2),
+      diametro: 12,
+      cantidad: 1,
+      etiqueta: "",
+    };
     actualizarElemento({
       ...elemento,
-      barrasNecesarias: [crearBarraInicial(), ...elemento.barrasNecesarias],
+      barrasNecesarias: [nuevaBarra, ...elemento.barrasNecesarias],
     });
   };
 

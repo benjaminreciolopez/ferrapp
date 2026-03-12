@@ -1,6 +1,6 @@
 import { Proyecto, CONFIG_DEFAULT, ElementoEstructural, BarraNecesaria } from "./types";
 import { getPlantilla } from "./plantillas";
-import { getGeometriaDefault } from "./generadores";
+import { getGeometriaDefault, generarBarrasDesdeGeometria } from "./generadores";
 import { markDirty, markDeleted, syncEtiquetas } from "./sync";
 
 const PROJECTS_KEY = "ferrapp_proyectos";
@@ -23,15 +23,26 @@ export function crearBarraInicial(): BarraNecesaria {
 export function crearElemento(nombre: string, subtipo?: string): ElementoEstructural {
   const plantilla = subtipo ? getPlantilla(subtipo) : null;
   const categoria = plantilla?.categoria || "libre";
+  const geometria = subtipo ? getGeometriaDefault(subtipo, categoria) : undefined;
+
+  // Generar barras desde geometría (usa dimensiones reales) o fallback a plantilla
+  let barrasNecesarias: BarraNecesaria[];
+  if (geometria) {
+    const barrasGeo = generarBarrasDesdeGeometria(geometria, categoria, subtipo);
+    barrasNecesarias = barrasGeo.map((b) => ({ ...b, id: generarId() }));
+  } else if (plantilla) {
+    barrasNecesarias = plantilla.barrasDefault.map((b) => ({ ...b, id: generarId() }));
+  } else {
+    barrasNecesarias = [crearBarraInicial()];
+  }
+
   return {
     id: generarId(),
     nombre,
     categoria,
     subtipo: subtipo || undefined,
-    geometria: subtipo ? getGeometriaDefault(subtipo, categoria) : undefined,
-    barrasNecesarias: plantilla
-      ? plantilla.barrasDefault.map((b) => ({ ...b, id: generarId() }))
-      : [crearBarraInicial()],
+    geometria,
+    barrasNecesarias,
     sobrantesGenerados: [],
     sobrantesConsumidos: [],
     calculado: false,
