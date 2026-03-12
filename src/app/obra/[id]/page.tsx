@@ -27,6 +27,50 @@ function generarId() {
   return Math.random().toString(36).substring(2, 9);
 }
 
+/** Etiquetas de barras longitudinales en elementos lineales (vigas/zunchos) */
+const ETIQUETAS_LONGITUDINALES = ["Barras abajo", "Barras arriba", "Refuerzo negativo", "Portaestribos"];
+
+/** Determina si una barra es longitudinal (vs estribo) */
+function esBarraLongitudinal(etiqueta: string): boolean {
+  return ETIQUETAS_LONGITUDINALES.some(e => etiqueta.startsWith(e));
+}
+
+/** Aplica el multiplicador de tramos para elementos lineales:
+ *  - Barras longitudinales: multiplica longitud (la viga es continua)
+ *  - Estribos: multiplica cantidad (cada tramo tiene sus estribos)
+ *  Para otros tipos de elemento, multiplica cantidad de todo.
+ */
+function aplicarMultiplicador(
+  barras: BarraNecesaria[],
+  mult: number,
+  esLineal: boolean,
+  nombreElemento: string
+): BarraNecesaria[] {
+  if (mult <= 1) {
+    return barras.map((b, i) => ({
+      ...b,
+      etiqueta: b.etiqueta || `${nombreElemento} - Pieza ${i + 1}`,
+    }));
+  }
+  return barras.map((b, i) => {
+    if (esLineal && esBarraLongitudinal(b.etiqueta)) {
+      // Longitudinales: longitud total = longitud_tramo × tramos
+      return {
+        ...b,
+        longitud: +(b.longitud * mult).toFixed(2),
+        etiqueta: b.etiqueta || `${nombreElemento} - Pieza ${i + 1}`,
+      };
+    } else {
+      // Estribos o elementos no lineales: multiplicar cantidad
+      return {
+        ...b,
+        cantidad: b.cantidad * mult,
+        etiqueta: b.etiqueta || `${nombreElemento} - Pieza ${i + 1}`,
+      };
+    }
+  });
+}
+
 // ===== UNDO/REDO =====
 const MAX_HISTORY = 30;
 
@@ -215,13 +259,11 @@ export default function ObraPage({ params }: { params: Promise<{ id: string }> }
     const barrasValidas = elemento.barrasNecesarias.filter((b) => b.longitud > 0 && b.cantidad > 0);
     if (barrasValidas.length === 0) return;
 
-    // Aplicar multiplicador de cantidad
+    // Aplicar multiplicador según tipo de elemento
     const mult = elemento.cantidad || 1;
-    const barrasConEtiqueta = barrasValidas.map((b, i) => ({
-      ...b,
-      cantidad: b.cantidad * mult,
-      etiqueta: b.etiqueta || `${elemento.nombre} - Pieza ${i + 1}`,
-    }));
+    const tipoGeo = getTipoGeometria(elemento.categoria || "libre", elemento.subtipo);
+    const esLineal = tipoGeo === "lineal";
+    const barrasConEtiqueta = aplicarMultiplicador(barrasValidas, mult, esLineal, elemento.nombre);
 
     const sobrantesDisp = getSobrantesDisponibles();
     const res = optimizarCortes(barrasConEtiqueta, config, sobrantesDisp);
@@ -248,11 +290,9 @@ export default function ObraPage({ params }: { params: Promise<{ id: string }> }
       if (barrasValidas.length === 0) continue;
 
       const mult = el.cantidad || 1;
-      const barrasConEtiqueta = barrasValidas.map((b, idx) => ({
-        ...b,
-        cantidad: b.cantidad * mult,
-        etiqueta: b.etiqueta || `${el.nombre} - Pieza ${idx + 1}`,
-      }));
+      const tipoGeo = getTipoGeometria(el.categoria || "libre", el.subtipo);
+      const esLineal = tipoGeo === "lineal";
+      const barrasConEtiqueta = aplicarMultiplicador(barrasValidas, mult, esLineal, el.nombre);
 
       // Sobrantes de elementos anteriores
       const sobrantesDisp: Sobrante[] = [];
@@ -292,11 +332,9 @@ export default function ObraPage({ params }: { params: Promise<{ id: string }> }
       if (barrasValidas.length === 0) continue;
 
       const mult = el.cantidad || 1;
-      const barrasConEtiqueta = barrasValidas.map((b, idx) => ({
-        ...b,
-        cantidad: b.cantidad * mult,
-        etiqueta: b.etiqueta || `${el.nombre} - Pieza ${idx + 1}`,
-      }));
+      const tipoGeo = getTipoGeometria(el.categoria || "libre", el.subtipo);
+      const esLineal = tipoGeo === "lineal";
+      const barrasConEtiqueta = aplicarMultiplicador(barrasValidas, mult, esLineal, el.nombre);
 
       const sobrantesDisp: Sobrante[] = [];
       if (usarSobrantes) {
@@ -397,11 +435,14 @@ export default function ObraPage({ params }: { params: Promise<{ id: string }> }
             </span>
           )}
           <div className="text-sm font-medium truncate">{el.nombre}</div>
-          {(el.cantidad || 1) > 1 && (
+          {(el.cantidad || 1) > 1 && (() => {
+            const tg = getTipoGeometria(el.categoria || "libre", el.subtipo);
+            return (
             <span className="text-[10px] bg-blue-500/20 text-blue-400 px-1 py-0.5 rounded leading-none shrink-0">
-              x{el.cantidad}
+              {tg === "lineal" ? `${el.cantidad} tramos` : `x${el.cantidad}`}
             </span>
-          )}
+            );
+          })()}
         </div>
         <div className="text-xs text-gray-500">
           {el.calculado ? (
@@ -775,18 +816,31 @@ export default function ObraPage({ params }: { params: Promise<{ id: string }> }
                       <option value="libre">Libre</option>
                     </select>
                   </div>
-                  {/* Cantidad + Planta + Recubrimiento */}
-                  <div className="flex items-center gap-4 mt-2 px-1">
+                  {/* Cantidad/Tramos + Planta + Recubrimiento */}
+                  {(() => {
+                    const tipoGeoUI = getTipoGeometria(elemento.categoria || "libre", elemento.subtipo);
+                    const esLinealUI = tipoGeoUI === "lineal";
+                    const cantUI = elemento.cantidad || 1;
+                    const longTramo = elemento.geometria?.lados[0]?.longitud || 0;
+                    const longTotal = esLinealUI && cantUI > 1 ? +(longTramo * cantUI).toFixed(2) : 0;
+                    return (
+                  <div className="flex flex-col gap-1.5 mt-2 px-1">
+                    <div className="flex items-center gap-4">
                     <label className="flex items-center gap-1.5 text-xs text-gray-400">
-                      <span>Uds:</span>
+                      <span>{esLinealUI ? "Tramos:" : "Uds:"}</span>
                       <input
                         type="number"
                         min={1}
-                        value={elemento.cantidad || 1}
+                        value={cantUI}
                         onChange={(e) => actualizarElemento({ ...elemento, cantidad: Math.max(1, parseInt(e.target.value) || 1), calculado: false })}
                         className="bg-surface-light border border-border rounded px-2 py-0.5 w-14 text-center text-foreground text-xs focus:outline-none focus:border-accent"
                       />
                     </label>
+                    {esLinealUI && cantUI > 1 && (
+                      <span className="text-xs text-blue-400 font-medium">
+                        Longitud total: {longTotal}m ({cantUI} tramos de {longTramo}m)
+                      </span>
+                    )}
                     <label className="flex items-center gap-1.5 text-xs text-gray-400">
                       <span>Planta:</span>
                       <input
@@ -813,7 +867,10 @@ export default function ObraPage({ params }: { params: Promise<{ id: string }> }
                       />
                       <span className="text-gray-600">m</span>
                     </label>
+                    </div>
                   </div>
+                    );
+                  })()}
                 </div>
                 <span className="text-sm text-gray-500 whitespace-nowrap">
                   {elementoActivo + 1} / {proyecto.elementos.length}
@@ -825,7 +882,20 @@ export default function ObraPage({ params }: { params: Promise<{ id: string }> }
                 geometria={elemento.geometria}
                 categoria={elemento.categoria || "libre"}
                 subtipo={elemento.subtipo}
-                onGeometriaChange={(g) => actualizarElemento({ ...elemento, geometria: g, calculado: false })}
+                onGeometriaChange={(g) => {
+                  // Auto-regenerar barras al cambiar geometria
+                  const barras = generarBarrasDesdeGeometria(
+                    g,
+                    elemento.categoria || "libre",
+                    elemento.subtipo
+                  );
+                  actualizarElemento({
+                    ...elemento,
+                    geometria: g,
+                    barrasNecesarias: barras.map((b) => ({ ...b, id: generarId() })),
+                    calculado: false,
+                  });
+                }}
                 onGenerarBarras={() => {
                   if (!elemento.geometria) return;
                   const barras = generarBarrasDesdeGeometria(
@@ -840,6 +910,43 @@ export default function ObraPage({ params }: { params: Promise<{ id: string }> }
                   });
                 }}
               />
+
+              {/* Info solapes activos */}
+              {elemento.barrasNecesarias.some(b => {
+                const nPatas = b.patas || 0;
+                const lPata = b.longitudPata || 0.15;
+                return (b.longitud + nPatas * lPata) > config.longitudBarraComercial;
+              }) && (
+                <div className="bg-amber-900/20 border border-amber-700/30 rounded-lg p-3">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-xs font-semibold text-amber-400 uppercase tracking-wide">
+                      Solapes activos (barras &gt; {config.longitudBarraComercial}m)
+                    </h3>
+                  </div>
+                  <div className="text-xs text-gray-400 mt-1 space-y-0.5">
+                    {elemento.barrasNecesarias.filter(b => {
+                      const nPatas = b.patas || 0;
+                      const lPata = b.longitudPata || 0.15;
+                      return (b.longitud + nPatas * lPata) > config.longitudBarraComercial;
+                    }).map((b, i) => {
+                      const nPatas = b.patas || 0;
+                      const lPata = b.longitudPata || 0.15;
+                      const longitudTotal = b.longitud + nPatas * lPata;
+                      const solape = config.solape[b.diametro] || 0.50;
+                      const longitudEfectiva = config.longitudBarraComercial - solape;
+                      const numTramos = Math.ceil(longitudTotal / longitudEfectiva);
+                      return (
+                        <div key={i} className="flex items-center gap-2">
+                          <span className="text-amber-400">Ø{b.diametro}</span>
+                          <span>{b.etiqueta || `Pieza ${i+1}`}: {longitudTotal.toFixed(2)}m</span>
+                          <span className="text-amber-500">→ {numTramos} tramos × {b.cantidad} uds = {numTramos * b.cantidad} piezas</span>
+                          <span className="text-gray-500">(solape {(solape*100).toFixed(0)}cm)</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
 
               {/* Recuento de esperas — solo muros con toggle activo */}
               {(() => {
@@ -900,7 +1007,12 @@ export default function ObraPage({ params }: { params: Promise<{ id: string }> }
                 <div className="flex items-center justify-between mb-3">
                   <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wide">
                     Barras necesarias ({elemento.barrasNecesarias.reduce((s, b) => s + b.cantidad, 0)} piezas
-                    {(elemento.cantidad || 1) > 1 && ` × ${elemento.cantidad} uds = ${elemento.barrasNecesarias.reduce((s, b) => s + b.cantidad, 0) * (elemento.cantidad || 1)}`}
+                    {(elemento.cantidad || 1) > 1 && (() => {
+                      const tg = getTipoGeometria(elemento.categoria || "libre", elemento.subtipo);
+                      return tg === "lineal"
+                        ? ` — ${elemento.cantidad} tramos`
+                        : ` × ${elemento.cantidad} uds = ${elemento.barrasNecesarias.reduce((s, b) => s + b.cantidad, 0) * (elemento.cantidad!)}`;
+                    })()}
                     )
                   </h2>
                   <button
@@ -939,7 +1051,12 @@ export default function ObraPage({ params }: { params: Promise<{ id: string }> }
                 className="w-full bg-accent hover:bg-accent-dark text-black font-bold py-3 px-6 rounded-xl text-lg transition-colors shadow-lg shadow-accent/20"
               >
                 OPTIMIZAR CORTES
-                {(elemento.cantidad || 1) > 1 && ` (×${elemento.cantidad} uds)`}
+                {(elemento.cantidad || 1) > 1 && (() => {
+                  const tg = getTipoGeometria(elemento.categoria || "libre", elemento.subtipo);
+                  return tg === "lineal"
+                    ? ` (${elemento.cantidad} tramos)`
+                    : ` (×${elemento.cantidad} uds)`;
+                })()}
                 {usarSobrantes && elementoActivo > 0 && " + sobrantes"}
               </button>
 

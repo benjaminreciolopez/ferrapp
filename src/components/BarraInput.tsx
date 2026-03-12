@@ -164,7 +164,7 @@ export default function BarraInput({ barra, longitudMax, solapeActual, categoria
         )}
       </div>
 
-      {/* Fila 3: Solape (solo si aplica) */}
+      {/* Fila 3: Solape (solo si aplica — barra > longitud comercial) */}
       {tieneSolape && (
         <div className="flex items-center gap-1.5 bg-amber-900/30 border border-amber-500/30 rounded px-2 py-1 text-xs">
           <span className="text-amber-400 font-medium">Solape:</span>
@@ -182,6 +182,15 @@ export default function BarraInput({ barra, longitudMax, solapeActual, categoria
           <span className="text-amber-500/70">
             {longitudTotal.toFixed(2)}m &gt; {longitudMax}m
           </span>
+          {(() => {
+            const longitudEfectiva = longitudMax - solapeActual;
+            const numTramos = Math.ceil(longitudTotal / longitudEfectiva);
+            return (
+              <span className="text-amber-400/80 ml-1">
+                → {numTramos} tramos, {numTramos - 1} empalme{numTramos > 2 ? "s" : ""} de {(solapeActual * 100).toFixed(0)}cm
+              </span>
+            );
+          })()}
         </div>
       )}
     </div>
