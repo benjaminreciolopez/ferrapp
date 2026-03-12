@@ -36,9 +36,7 @@ export default function ObraPage({ params }: { params: Promise<{ id: string }> }
   const [usarSobrantes, setUsarSobrantes] = useState(true);
   const [tab, setTab] = useState<"despiece" | "resumen">("despiece");
   const [mostrarSelector, setMostrarSelector] = useState(false);
-  const [sidebarBoton, setSidebarBoton] = useState(false);   // abierto por boton
-  const [sidebarHover, setSidebarHover] = useState(false);    // abierto por hover
-  const sidebarAbierto = sidebarBoton || sidebarHover;
+  const [sidebarAbierto, setSidebarAbierto] = useState(false);
 
   useEffect(() => {
     const p = getProyecto(id);
@@ -269,7 +267,7 @@ export default function ObraPage({ params }: { params: Promise<{ id: string }> }
       <div className="bg-surface border-b border-border px-4 py-3 flex items-center justify-between">
         <div className="flex items-center gap-4">
           <button
-            onClick={() => { setSidebarBoton(!sidebarBoton); setSidebarHover(false); }}
+            onClick={() => setSidebarAbierto(!sidebarAbierto)}
             className={`text-gray-400 hover:text-accent transition-colors p-1 ${sidebarAbierto ? "text-accent" : ""}`}
             title={sidebarAbierto ? "Ocultar panel" : "Mostrar panel"}
           >
@@ -343,19 +341,11 @@ export default function ObraPage({ params }: { params: Promise<{ id: string }> }
       ) : (
         /* TAB DESPIECE */
         <div className="flex h-[calc(100vh-57px)] relative overflow-hidden">
-          {/* Zona hover izquierda para abrir sidebar */}
-          {!sidebarAbierto && (
-            <div
-              className="absolute left-0 top-0 bottom-0 w-3 z-20 cursor-pointer hover:bg-accent/10 transition-colors"
-              onMouseEnter={() => setSidebarHover(true)}
-            />
-          )}
-
-          {/* Backdrop — click para cerrar (solo cuando abierto por boton) */}
-          {sidebarBoton && (
+          {/* Backdrop — click para cerrar */}
+          {sidebarAbierto && (
             <div
               className="absolute inset-0 z-20"
-              onClick={() => setSidebarBoton(false)}
+              onClick={() => setSidebarAbierto(false)}
             />
           )}
 
@@ -364,7 +354,6 @@ export default function ObraPage({ params }: { params: Promise<{ id: string }> }
             className={`bg-surface border-r border-border p-4 overflow-y-auto w-64 shrink-0 absolute left-0 top-0 bottom-0 z-30 transition-transform duration-300 ${
               sidebarAbierto ? "translate-x-0 shadow-2xl shadow-black/30" : "-translate-x-full"
             }`}
-            onMouseLeave={() => setSidebarHover(false)}
           >
             <div className="flex items-center justify-between mb-3">
               <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wide">Elementos</h2>
