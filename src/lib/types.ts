@@ -184,6 +184,15 @@ export interface GeometriaElemento {
   caraInterior?: ConfigCaraMuro;
   diametroHorquillas?: number;  // Ø horquillas (default 8)
   incluirEsperas?: boolean;     // mostrar recuento de esperas
+  // Estribos por tramos (vigas, zunchos)
+  tramosEstribos?: TramoEstribo[];
+}
+
+/** Tramo de estribos con espaciado diferente */
+export interface TramoEstribo {
+  nombre: string;      // "Extremo izq", "Centro", "Extremo der"
+  longitud: number;    // longitud del tramo en metros
+  espaciado: number;   // separación entre estribos en metros
 }
 
 /** Que tipo de geometria usa cada categoria */
@@ -219,6 +228,9 @@ export interface ElementoEstructural {
   sobrantesGenerados: Sobrante[];
   sobrantesConsumidos: string[];
   calculado: boolean;
+  cantidad?: number; // multiplicador: cuantas unidades iguales (default 1)
+  planta?: string;   // agrupación por planta/zona
+  recubrimiento?: number; // recubrimiento específico del elemento (metros), si no usa el global
 }
 
 /** Proyecto completo de obra */

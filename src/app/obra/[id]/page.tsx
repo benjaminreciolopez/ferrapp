@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, use } from "react";
+import { useState, useEffect, use, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import {
   BarraNecesaria,
@@ -27,21 +27,82 @@ function generarId() {
   return Math.random().toString(36).substring(2, 9);
 }
 
+// ===== UNDO/REDO =====
+const MAX_HISTORY = 30;
+
 export default function ObraPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const router = useRouter();
-  const [proyecto, setProyecto] = useState<Proyecto | null>(null);
+  const [proyecto, setProyectoRaw] = useState<Proyecto | null>(null);
   const [elementoActivo, setElementoActivo] = useState(0);
   const [resultados, setResultados] = useState<Map<string, ResultadoDespieceExtendido>>(new Map());
   const [usarSobrantes, setUsarSobrantes] = useState(true);
   const [tab, setTab] = useState<"despiece" | "resumen">("despiece");
   const [mostrarSelector, setMostrarSelector] = useState(false);
   const [sidebarAbierto, setSidebarAbierto] = useState(false);
+  const [contextMenu, setContextMenu] = useState<{ idx: number; x: number; y: number } | null>(null);
+
+  // Undo/Redo
+  const [history, setHistory] = useState<Proyecto[]>([]);
+  const [historyIdx, setHistoryIdx] = useState(-1);
+  const [skipHistory, setSkipHistory] = useState(false);
+
+  const setProyecto = useCallback((p: Proyecto | null) => {
+    if (!p) { setProyectoRaw(p); return; }
+    setProyectoRaw(p);
+    if (!skipHistory) {
+      setHistory(prev => {
+        const base = prev.slice(0, historyIdx + 1);
+        const next = [...base, JSON.parse(JSON.stringify(p))];
+        if (next.length > MAX_HISTORY) next.shift();
+        return next;
+      });
+      setHistoryIdx(prev => Math.min(prev + 1, MAX_HISTORY - 1));
+    }
+  }, [skipHistory, historyIdx]);
+
+  const undo = useCallback(() => {
+    if (historyIdx <= 0) return;
+    const newIdx = historyIdx - 1;
+    setSkipHistory(true);
+    setProyectoRaw(JSON.parse(JSON.stringify(history[newIdx])));
+    setHistoryIdx(newIdx);
+    setTimeout(() => setSkipHistory(false), 0);
+  }, [history, historyIdx]);
+
+  const redo = useCallback(() => {
+    if (historyIdx >= history.length - 1) return;
+    const newIdx = historyIdx + 1;
+    setSkipHistory(true);
+    setProyectoRaw(JSON.parse(JSON.stringify(history[newIdx])));
+    setHistoryIdx(newIdx);
+    setTimeout(() => setSkipHistory(false), 0);
+  }, [history, historyIdx]);
+
+  // Keyboard shortcuts: Ctrl+Z / Ctrl+Y
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === "z" && !e.shiftKey) { e.preventDefault(); undo(); }
+      if ((e.ctrlKey || e.metaKey) && (e.key === "y" || (e.key === "z" && e.shiftKey))) { e.preventDefault(); redo(); }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [undo, redo]);
+
+  // Close context menu on click outside
+  useEffect(() => {
+    if (!contextMenu) return;
+    const handler = () => setContextMenu(null);
+    window.addEventListener("click", handler);
+    return () => window.removeEventListener("click", handler);
+  }, [contextMenu]);
 
   useEffect(() => {
     const p = getProyecto(id);
     if (p) {
-      setProyecto(p);
+      setProyectoRaw(p);
+      setHistory([JSON.parse(JSON.stringify(p))]);
+      setHistoryIdx(0);
     } else {
       router.push("/");
     }
@@ -82,6 +143,10 @@ export default function ObraPage({ params }: { params: Promise<{ id: string }> }
 
   const agregarElemento = (nombre: string, subtipo?: string) => {
     const nuevo = crearElemento(nombre, subtipo);
+    // Heredar planta del elemento activo actual
+    if (elemento?.planta) {
+      nuevo.planta = elemento.planta;
+    }
     setProyecto({ ...proyecto, elementos: [...proyecto.elementos, nuevo] });
     setElementoActivo(proyecto.elementos.length);
     setMostrarSelector(false);
@@ -95,6 +160,34 @@ export default function ObraPage({ params }: { params: Promise<{ id: string }> }
     setResultados(nuevosResultados);
     setProyecto({ ...proyecto, elementos: nuevos });
     setElementoActivo(Math.min(elementoActivo, nuevos.length - 1));
+  };
+
+  const duplicarElemento = (idx: number) => {
+    const original = proyecto.elementos[idx];
+    const copia: ElementoEstructural = {
+      ...JSON.parse(JSON.stringify(original)),
+      id: generarId(),
+      nombre: original.nombre + " (copia)",
+      calculado: false,
+      sobrantesGenerados: [],
+      sobrantesConsumidos: [],
+    };
+    // Reasignar IDs a las barras
+    copia.barrasNecesarias = copia.barrasNecesarias.map((b: BarraNecesaria) => ({ ...b, id: generarId() }));
+    const nuevos = [...proyecto.elementos];
+    nuevos.splice(idx + 1, 0, copia);
+    setProyecto({ ...proyecto, elementos: nuevos });
+    setElementoActivo(idx + 1);
+  };
+
+  const moverElemento = (idx: number, dir: -1 | 1) => {
+    const newIdx = idx + dir;
+    if (newIdx < 0 || newIdx >= proyecto.elementos.length) return;
+    const nuevos = [...proyecto.elementos];
+    [nuevos[idx], nuevos[newIdx]] = [nuevos[newIdx], nuevos[idx]];
+    setProyecto({ ...proyecto, elementos: nuevos });
+    if (elementoActivo === idx) setElementoActivo(newIdx);
+    else if (elementoActivo === newIdx) setElementoActivo(idx);
   };
 
   const agregarBarra = () => {
@@ -122,8 +215,11 @@ export default function ObraPage({ params }: { params: Promise<{ id: string }> }
     const barrasValidas = elemento.barrasNecesarias.filter((b) => b.longitud > 0 && b.cantidad > 0);
     if (barrasValidas.length === 0) return;
 
+    // Aplicar multiplicador de cantidad
+    const mult = elemento.cantidad || 1;
     const barrasConEtiqueta = barrasValidas.map((b, i) => ({
       ...b,
+      cantidad: b.cantidad * mult,
       etiqueta: b.etiqueta || `${elemento.nombre} - Pieza ${i + 1}`,
     }));
 
@@ -151,8 +247,10 @@ export default function ObraPage({ params }: { params: Promise<{ id: string }> }
       const barrasValidas = el.barrasNecesarias.filter((b) => b.longitud > 0 && b.cantidad > 0);
       if (barrasValidas.length === 0) continue;
 
+      const mult = el.cantidad || 1;
       const barrasConEtiqueta = barrasValidas.map((b, idx) => ({
         ...b,
+        cantidad: b.cantidad * mult,
         etiqueta: b.etiqueta || `${el.nombre} - Pieza ${idx + 1}`,
       }));
 
@@ -183,7 +281,7 @@ export default function ObraPage({ params }: { params: Promise<{ id: string }> }
     setProyecto({ ...proyecto });
   };
 
-  // Recalcular todos los elementos con una nueva config (para cambio de barras 6m/12m)
+  // Recalcular todos los elementos con una nueva config
   const recalcularConConfig = (nuevaConfig: ConfigConstruccion) => {
     const nuevosResultados = new Map<string, ResultadoDespieceExtendido>();
     const elementosActualizados = [...proyecto.elementos];
@@ -193,12 +291,13 @@ export default function ObraPage({ params }: { params: Promise<{ id: string }> }
       const barrasValidas = el.barrasNecesarias.filter((b) => b.longitud > 0 && b.cantidad > 0);
       if (barrasValidas.length === 0) continue;
 
+      const mult = el.cantidad || 1;
       const barrasConEtiqueta = barrasValidas.map((b, idx) => ({
         ...b,
+        cantidad: b.cantidad * mult,
         etiqueta: b.etiqueta || `${el.nombre} - Pieza ${idx + 1}`,
       }));
 
-      // Sobrantes de elementos anteriores
       const sobrantesDisp: Sobrante[] = [];
       if (usarSobrantes) {
         for (let j = 0; j < i; j++) {
@@ -236,7 +335,6 @@ export default function ObraPage({ params }: { params: Promise<{ id: string }> }
     for (const [, res] of resultados) {
       for (const r of res.resultadosPorDiametro) {
         barrasTotal += r.totalBarrasComerciales;
-        // Sumar metros reales de cada barra comercial
         for (const bc of r.barrasComerciales) {
           if (bc.id > 0) {
             metrosCompra += bc.longitudTotal;
@@ -260,6 +358,73 @@ export default function ObraPage({ params }: { params: Promise<{ id: string }> }
 
   const global = resumenGlobal();
   const resultado = resultados.get(elemento?.id || "");
+
+  // Plantas únicas
+  const plantasUnicas = [...new Set(proyecto.elementos.map(e => e.planta || "").filter(Boolean))].sort();
+
+  // Agrupar elementos por planta
+  const elementosPorPlanta = () => {
+    const sinPlanta = proyecto.elementos.map((el, idx) => ({ el, idx })).filter(({ el }) => !el.planta);
+    const conPlanta = new Map<string, { el: ElementoEstructural; idx: number }[]>();
+    proyecto.elementos.forEach((el, idx) => {
+      if (el.planta) {
+        const arr = conPlanta.get(el.planta) || [];
+        arr.push({ el, idx });
+        conPlanta.set(el.planta, arr);
+      }
+    });
+    return { sinPlanta, conPlanta };
+  };
+
+  const { sinPlanta, conPlanta } = elementosPorPlanta();
+
+  const renderElementoSidebar = (el: ElementoEstructural, idx: number) => (
+    <div
+      key={el.id}
+      className={`group flex items-center gap-2 p-2.5 rounded-lg cursor-pointer transition-colors ${
+        idx === elementoActivo
+          ? "bg-accent/20 border border-accent/40"
+          : "hover:bg-surface-light border border-transparent"
+      }`}
+      onClick={() => { setElementoActivo(idx); setContextMenu(null); }}
+      onContextMenu={(e) => { e.preventDefault(); setContextMenu({ idx, x: e.clientX, y: e.clientY }); }}
+    >
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-1.5">
+          {el.categoria && el.categoria !== "libre" && (
+            <span className="text-[10px] font-bold bg-accent/20 text-accent px-1.5 py-0.5 rounded leading-none shrink-0">
+              {CATEGORIAS_INFO[el.categoria]?.icono || ""}
+            </span>
+          )}
+          <div className="text-sm font-medium truncate">{el.nombre}</div>
+          {(el.cantidad || 1) > 1 && (
+            <span className="text-[10px] bg-blue-500/20 text-blue-400 px-1 py-0.5 rounded leading-none shrink-0">
+              x{el.cantidad}
+            </span>
+          )}
+        </div>
+        <div className="text-xs text-gray-500">
+          {el.calculado ? (
+            <>
+              <span className="text-success">OK</span>
+              {resultados.get(el.id) && (
+                <span className="ml-1">{resultados.get(el.id)!.pesoTotal.toFixed(0)} kg</span>
+              )}
+            </>
+          ) : (
+            <span>Pendiente</span>
+          )}
+        </div>
+      </div>
+      <button
+        onClick={(e) => { e.stopPropagation(); setContextMenu({ idx, x: e.clientX, y: e.clientY }); }}
+        className="text-gray-600 hover:text-gray-300 text-xs p-1 opacity-0 group-hover:opacity-100 shrink-0"
+        title="Opciones"
+      >
+        &#8942;
+      </button>
+    </div>
+  );
 
   return (
     <div className="min-h-screen bg-background">
@@ -294,6 +459,29 @@ export default function ObraPage({ params }: { params: Promise<{ id: string }> }
           />
         </div>
         <div className="flex items-center gap-3">
+          {/* Undo/Redo */}
+          <div className="flex gap-1">
+            <button
+              onClick={undo}
+              disabled={historyIdx <= 0}
+              className="text-gray-400 hover:text-accent disabled:text-gray-700 disabled:cursor-not-allowed p-1 transition-colors"
+              title="Deshacer (Ctrl+Z)"
+            >
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M3 7h7a3 3 0 0 1 0 6H9" /><path d="M6 10L3 7l3-3" />
+              </svg>
+            </button>
+            <button
+              onClick={redo}
+              disabled={historyIdx >= history.length - 1}
+              className="text-gray-400 hover:text-accent disabled:text-gray-700 disabled:cursor-not-allowed p-1 transition-colors"
+              title="Rehacer (Ctrl+Y)"
+            >
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M13 7H6a3 3 0 0 0 0 6h1" /><path d="M10 10l3-3-3-3" />
+              </svg>
+            </button>
+          </div>
           {/* Tabs */}
           <div className="flex bg-surface-light rounded-lg p-0.5">
             <button
@@ -323,7 +511,7 @@ export default function ObraPage({ params }: { params: Promise<{ id: string }> }
       </div>
 
       {tab === "resumen" ? (
-        /* TAB RESUMEN — Vista previa por zonas */
+        /* TAB RESUMEN */
         <div className="h-[calc(100vh-57px)] overflow-y-auto">
           {resultados.size > 0 ? (
             <ResumenImpresion
@@ -341,7 +529,7 @@ export default function ObraPage({ params }: { params: Promise<{ id: string }> }
       ) : (
         /* TAB DESPIECE */
         <div className="flex h-[calc(100vh-57px)] relative overflow-hidden">
-          {/* Backdrop — click para cerrar */}
+          {/* Backdrop */}
           {sidebarAbierto && (
             <div
               className="absolute inset-0 z-20"
@@ -351,7 +539,7 @@ export default function ObraPage({ params }: { params: Promise<{ id: string }> }
 
           {/* Sidebar de elementos */}
           <div
-            className={`bg-surface border-r border-border p-4 overflow-y-auto w-64 shrink-0 absolute left-0 top-0 bottom-0 z-30 transition-transform duration-300 ${
+            className={`bg-surface border-r border-border p-4 overflow-y-auto w-72 shrink-0 absolute left-0 top-0 bottom-0 z-30 transition-transform duration-300 ${
               sidebarAbierto ? "translate-x-0 shadow-2xl shadow-black/30" : "-translate-x-full"
             }`}
           >
@@ -365,52 +553,57 @@ export default function ObraPage({ params }: { params: Promise<{ id: string }> }
               </button>
             </div>
 
-            <div className="space-y-1 mb-4">
-              {proyecto.elementos.map((el, idx) => (
-                <div
-                  key={el.id}
-                  className={`flex items-center gap-2 p-2.5 rounded-lg cursor-pointer transition-colors ${
-                    idx === elementoActivo
-                      ? "bg-accent/20 border border-accent/40"
-                      : "hover:bg-surface-light border border-transparent"
-                  }`}
-                  onClick={() => setElementoActivo(idx)}
+            {/* Filtro/agregar planta */}
+            <div className="mb-3">
+              <div className="flex items-center gap-1 flex-wrap">
+                <button
+                  onClick={() => {
+                    const nombre = prompt("Nombre de la planta/zona:");
+                    if (nombre && nombre.trim()) {
+                      // Asignar al elemento activo
+                      if (elemento) {
+                        actualizarElemento({ ...elemento, planta: nombre.trim() });
+                      }
+                    }
+                  }}
+                  className="text-[10px] text-gray-500 hover:text-accent px-1.5 py-0.5 border border-dashed border-gray-700 rounded transition-colors"
+                  title="Asignar planta al elemento activo"
                 >
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-1.5">
-                      {el.categoria && el.categoria !== "libre" && (
-                        <span className="text-[10px] font-bold bg-accent/20 text-accent px-1.5 py-0.5 rounded leading-none shrink-0">
-                          {CATEGORIAS_INFO[el.categoria]?.icono || ""}
-                        </span>
-                      )}
-                      <div className="text-sm font-medium truncate">{el.nombre}</div>
+                  + Planta
+                </button>
+                {plantasUnicas.map(p => (
+                  <span key={p} className="text-[10px] bg-surface-light text-gray-400 px-1.5 py-0.5 rounded">
+                    {p}
+                  </span>
+                ))}
+              </div>
+            </div>
+
+            {/* Elementos agrupados */}
+            <div className="space-y-1 mb-4">
+              {plantasUnicas.length > 0 ? (
+                <>
+                  {/* Con planta */}
+                  {[...conPlanta.entries()].map(([planta, items]) => (
+                    <div key={planta}>
+                      <div className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mt-2 mb-1 px-1 flex items-center gap-1">
+                        <span className="bg-accent/10 text-accent px-1.5 py-0.5 rounded">{planta}</span>
+                        <span className="text-gray-600">({items.length})</span>
+                      </div>
+                      {items.map(({ el, idx }) => renderElementoSidebar(el, idx))}
                     </div>
-                    <div className="text-xs text-gray-500">
-                      {el.calculado ? (
-                        <>
-                          <span className="text-success">OK</span>
-                          {resultados.get(el.id) && (
-                            <span className="ml-1">{resultados.get(el.id)!.pesoTotal.toFixed(0)} kg</span>
-                          )}
-                        </>
-                      ) : (
-                        <span>Pendiente</span>
-                      )}
+                  ))}
+                  {/* Sin planta */}
+                  {sinPlanta.length > 0 && (
+                    <div>
+                      <div className="text-[10px] font-bold text-gray-600 uppercase tracking-wider mt-2 mb-1 px-1">Sin planta</div>
+                      {sinPlanta.map(({ el, idx }) => renderElementoSidebar(el, idx))}
                     </div>
-                  </div>
-                  {proyecto.elementos.length > 1 && (
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        eliminarElemento(idx);
-                      }}
-                      className="text-gray-600 hover:text-danger text-xs p-1 opacity-0 group-hover:opacity-100"
-                    >
-                      X
-                    </button>
                   )}
-                </div>
-              ))}
+                </>
+              ) : (
+                proyecto.elementos.map((el, idx) => renderElementoSidebar(el, idx))
+              )}
             </div>
 
             {/* Config */}
@@ -430,7 +623,7 @@ export default function ObraPage({ params }: { params: Promise<{ id: string }> }
                             let nuevas: number[];
                             if (activo) {
                               nuevas = activas.filter((x) => x !== L);
-                              if (nuevas.length === 0) nuevas = [L]; // al menos una
+                              if (nuevas.length === 0) nuevas = [L];
                             } else {
                               nuevas = [...activas, L].sort((a, b) => a - b);
                             }
@@ -439,15 +632,11 @@ export default function ObraPage({ params }: { params: Promise<{ id: string }> }
                               longitudesDisponibles: nuevas,
                               longitudBarraComercial: Math.max(...nuevas),
                             };
-                            // Auto-recalcular si hay elementos ya calculados
                             const hayCalculados = proyecto.elementos.some((el) => el.calculado);
                             if (hayCalculados) {
                               recalcularConConfig(nuevaConfig);
                             } else {
-                              setProyecto({
-                                ...proyecto,
-                                config: nuevaConfig,
-                              });
+                              setProyecto({ ...proyecto, config: nuevaConfig });
                             }
                           }}
                           className="rounded border-border accent-accent"
@@ -500,6 +689,64 @@ export default function ObraPage({ params }: { params: Promise<{ id: string }> }
             )}
           </div>
 
+          {/* Context menu */}
+          {contextMenu && (
+            <div
+              className="fixed z-50 bg-surface border border-border rounded-lg shadow-xl shadow-black/30 py-1 min-w-[160px]"
+              style={{ top: contextMenu.y, left: contextMenu.x }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <button
+                className="w-full text-left px-3 py-1.5 text-sm text-gray-300 hover:bg-surface-light hover:text-foreground transition-colors flex items-center gap-2"
+                onClick={() => { duplicarElemento(contextMenu.idx); setContextMenu(null); }}
+              >
+                <span className="text-blue-400">⧉</span> Duplicar
+              </button>
+              <button
+                className="w-full text-left px-3 py-1.5 text-sm text-gray-300 hover:bg-surface-light hover:text-foreground transition-colors flex items-center gap-2"
+                onClick={() => { moverElemento(contextMenu.idx, -1); setContextMenu(null); }}
+                disabled={contextMenu.idx === 0}
+              >
+                <span className="text-gray-400">↑</span> Mover arriba
+              </button>
+              <button
+                className="w-full text-left px-3 py-1.5 text-sm text-gray-300 hover:bg-surface-light hover:text-foreground transition-colors flex items-center gap-2"
+                onClick={() => { moverElemento(contextMenu.idx, 1); setContextMenu(null); }}
+                disabled={contextMenu.idx === proyecto.elementos.length - 1}
+              >
+                <span className="text-gray-400">↓</span> Mover abajo
+              </button>
+              <div className="border-t border-border my-1" />
+              <button
+                className="w-full text-left px-3 py-1.5 text-sm text-gray-300 hover:bg-surface-light hover:text-foreground transition-colors flex items-center gap-2"
+                onClick={() => {
+                  const nombre = prompt("Planta/zona:", proyecto.elementos[contextMenu.idx].planta || "");
+                  if (nombre !== null) {
+                    const nuevos = [...proyecto.elementos];
+                    nuevos[contextMenu.idx] = { ...nuevos[contextMenu.idx], planta: nombre.trim() || undefined };
+                    setProyecto({ ...proyecto, elementos: nuevos });
+                  }
+                  setContextMenu(null);
+                }}
+              >
+                <span className="text-accent">◫</span> Asignar planta
+              </button>
+              <div className="border-t border-border my-1" />
+              <button
+                className="w-full text-left px-3 py-1.5 text-sm text-red-400 hover:bg-red-900/30 transition-colors flex items-center gap-2"
+                onClick={() => {
+                  if (proyecto.elementos.length > 1 && confirm(`¿Eliminar "${proyecto.elementos[contextMenu.idx].nombre}"?`)) {
+                    eliminarElemento(contextMenu.idx);
+                  }
+                  setContextMenu(null);
+                }}
+                disabled={proyecto.elementos.length <= 1}
+              >
+                <span>✕</span> Eliminar
+              </button>
+            </div>
+          )}
+
           {/* Main content */}
           <div className="flex-1 overflow-y-auto p-6">
             <div className="max-w-5xl mx-auto space-y-4">
@@ -528,9 +775,45 @@ export default function ObraPage({ params }: { params: Promise<{ id: string }> }
                       <option value="libre">Libre</option>
                     </select>
                   </div>
-                  {elemento.subtipo && (
-                    <div className="text-xs text-gray-600 mt-1 px-1">Plantilla aplicada</div>
-                  )}
+                  {/* Cantidad + Planta + Recubrimiento */}
+                  <div className="flex items-center gap-4 mt-2 px-1">
+                    <label className="flex items-center gap-1.5 text-xs text-gray-400">
+                      <span>Uds:</span>
+                      <input
+                        type="number"
+                        min={1}
+                        value={elemento.cantidad || 1}
+                        onChange={(e) => actualizarElemento({ ...elemento, cantidad: Math.max(1, parseInt(e.target.value) || 1), calculado: false })}
+                        className="bg-surface-light border border-border rounded px-2 py-0.5 w-14 text-center text-foreground text-xs focus:outline-none focus:border-accent"
+                      />
+                    </label>
+                    <label className="flex items-center gap-1.5 text-xs text-gray-400">
+                      <span>Planta:</span>
+                      <input
+                        type="text"
+                        value={elemento.planta || ""}
+                        onChange={(e) => actualizarElemento({ ...elemento, planta: e.target.value || undefined })}
+                        placeholder="—"
+                        className="bg-surface-light border border-border rounded px-2 py-0.5 w-24 text-foreground text-xs focus:outline-none focus:border-accent"
+                        list="plantas-list"
+                      />
+                      <datalist id="plantas-list">
+                        {plantasUnicas.map(p => <option key={p} value={p} />)}
+                      </datalist>
+                    </label>
+                    <label className="flex items-center gap-1.5 text-xs text-gray-400">
+                      <span>Recub:</span>
+                      <input
+                        type="number"
+                        min={0}
+                        step={0.005}
+                        value={elemento.recubrimiento ?? config.recubrimiento}
+                        onChange={(e) => actualizarElemento({ ...elemento, recubrimiento: parseFloat(e.target.value) || 0.05 })}
+                        className="bg-surface-light border border-border rounded px-2 py-0.5 w-16 text-center text-foreground text-xs focus:outline-none focus:border-accent"
+                      />
+                      <span className="text-gray-600">m</span>
+                    </label>
+                  </div>
                 </div>
                 <span className="text-sm text-gray-500 whitespace-nowrap">
                   {elementoActivo + 1} / {proyecto.elementos.length}
@@ -616,7 +899,9 @@ export default function ObraPage({ params }: { params: Promise<{ id: string }> }
               <div className="bg-surface rounded-xl border border-border p-4">
                 <div className="flex items-center justify-between mb-3">
                   <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wide">
-                    Barras necesarias ({elemento.barrasNecesarias.reduce((s, b) => s + b.cantidad, 0)} piezas)
+                    Barras necesarias ({elemento.barrasNecesarias.reduce((s, b) => s + b.cantidad, 0)} piezas
+                    {(elemento.cantidad || 1) > 1 && ` × ${elemento.cantidad} uds = ${elemento.barrasNecesarias.reduce((s, b) => s + b.cantidad, 0) * (elemento.cantidad || 1)}`}
+                    )
                   </h2>
                   <button
                     onClick={agregarBarra}
@@ -654,7 +939,8 @@ export default function ObraPage({ params }: { params: Promise<{ id: string }> }
                 className="w-full bg-accent hover:bg-accent-dark text-black font-bold py-3 px-6 rounded-xl text-lg transition-colors shadow-lg shadow-accent/20"
               >
                 OPTIMIZAR CORTES
-                {usarSobrantes && elementoActivo > 0 && " (con sobrantes)"}
+                {(elemento.cantidad || 1) > 1 && ` (×${elemento.cantidad} uds)`}
+                {usarSobrantes && elementoActivo > 0 && " + sobrantes"}
               </button>
 
               {resultado && (

@@ -478,13 +478,28 @@ function generarBarrasLineal(g: GeometriaElemento, subtipo?: string): BarraBase[
 
   // Estribos: perimetro seccion
   const periEstribos = +((secAncho + secAlto) * 2 - 0.04).toFixed(2); // descontar recubrimientos
-  const cantEstribos = Math.round(longitud / espEstribos);
-  barras.push({
-    longitud: periEstribos,
-    diametro: dEstribo,
-    cantidad: cantEstribos,
-    etiqueta: "Estribos",
-  });
+
+  if (g.tramosEstribos && g.tramosEstribos.length > 0) {
+    // Estribos por tramos (diferentes espaciados)
+    for (const tramo of g.tramosEstribos) {
+      const cantTramo = Math.max(1, Math.round(tramo.longitud / tramo.espaciado));
+      barras.push({
+        longitud: periEstribos,
+        diametro: dEstribo,
+        cantidad: cantTramo,
+        etiqueta: `Estribos ${tramo.nombre}`,
+      });
+    }
+  } else {
+    // Estribos uniformes
+    const cantEstribos = Math.round(longitud / espEstribos);
+    barras.push({
+      longitud: periEstribos,
+      diametro: dEstribo,
+      cantidad: cantEstribos,
+      etiqueta: "Estribos",
+    });
+  }
 
   // Refuerzo negativo (si la plantilla lo tiene)
   if (plantilla?.barrasDefault.some(b => b.etiqueta === "Refuerzo negativo")) {

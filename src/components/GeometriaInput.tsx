@@ -8,6 +8,7 @@ import {
   LadoGeometria,
   Hueco,
   ConfigCaraMuro,
+  TramoEstribo,
   DIAMETROS_DISPONIBLES,
 } from "@/lib/types";
 import NumInput from "./NumInput";
@@ -795,6 +796,119 @@ export default function GeometriaInput({
           </div>
         )}
       </div>
+
+      {/* Tramos de estribos — vigas/zunchos */}
+      {tipo === "lineal" && (() => {
+        const tramos = g.tramosEstribos || [];
+        const longTotal = g.lados[0]?.longitud || 5;
+
+        const addTramosPredefinidos = () => {
+          // Crear 3 tramos: extremo izq (L/5), centro (3L/5), extremo der (L/5)
+          const lExt = +(longTotal / 5).toFixed(2);
+          const lCentro = +(longTotal - 2 * lExt).toFixed(2);
+          updateField({
+            tramosEstribos: [
+              { nombre: "Extremo izq", longitud: lExt, espaciado: 0.10 },
+              { nombre: "Centro", longitud: lCentro, espaciado: g.espaciado || 0.15 },
+              { nombre: "Extremo der", longitud: lExt, espaciado: 0.10 },
+            ],
+          });
+        };
+
+        const updateTramo = (idx: number, field: keyof TramoEstribo, value: string | number) => {
+          const nuevos = [...tramos];
+          nuevos[idx] = { ...nuevos[idx], [field]: value };
+          updateField({ tramosEstribos: nuevos });
+        };
+
+        const addTramo = () => {
+          updateField({
+            tramosEstribos: [...tramos, { nombre: `Tramo ${tramos.length + 1}`, longitud: 1.0, espaciado: 0.15 }],
+          });
+        };
+
+        const removeTramo = (idx: number) => {
+          updateField({ tramosEstribos: tramos.filter((_, i) => i !== idx) });
+        };
+
+        const sumaTramos = tramos.reduce((s, t) => s + t.longitud, 0);
+
+        return (
+          <div className="bg-surface-light/50 border border-border rounded-lg p-3 space-y-2">
+            <div className="flex items-center justify-between">
+              <label className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide">
+                Estribos por tramos
+              </label>
+              <div className="flex gap-1">
+                {tramos.length === 0 ? (
+                  <button
+                    onClick={addTramosPredefinidos}
+                    className="text-[10px] text-accent hover:text-accent-dark px-1.5 py-0.5 border border-accent/30 rounded transition-colors"
+                  >
+                    Activar tramos
+                  </button>
+                ) : (
+                  <>
+                    <button
+                      onClick={addTramo}
+                      className="text-[10px] text-accent hover:text-accent-dark px-1.5 py-0.5 border border-accent/30 rounded transition-colors"
+                    >
+                      + Tramo
+                    </button>
+                    <button
+                      onClick={() => updateField({ tramosEstribos: undefined })}
+                      className="text-[10px] text-gray-500 hover:text-red-400 px-1.5 py-0.5 border border-gray-700 rounded transition-colors"
+                    >
+                      Uniforme
+                    </button>
+                  </>
+                )}
+              </div>
+            </div>
+            {tramos.length > 0 && (
+              <div className="space-y-1.5">
+                {tramos.map((tramo, idx) => (
+                  <div key={idx} className="flex items-center gap-2">
+                    <input
+                      type="text"
+                      value={tramo.nombre}
+                      onChange={(e) => updateTramo(idx, "nombre", e.target.value)}
+                      className="bg-surface border border-border rounded px-1.5 py-0.5 text-xs text-foreground w-24 focus:outline-none focus:border-accent"
+                    />
+                    <NumInput
+                      value={tramo.longitud}
+                      onChange={(v) => updateTramo(idx, "longitud", v)}
+                      className="bg-surface border border-border rounded px-1.5 py-0.5 text-xs w-14 text-foreground focus:outline-none focus:border-accent"
+                    />
+                    <span className="text-[10px] text-gray-500">m</span>
+                    <span className="text-[10px] text-gray-500">c/</span>
+                    <NumInput
+                      value={Math.round(tramo.espaciado * 100)}
+                      onChange={(v) => updateTramo(idx, "espaciado", (v || 15) / 100)}
+                      decimals={false}
+                      className="bg-surface border border-border rounded px-1.5 py-0.5 text-xs w-12 text-foreground focus:outline-none focus:border-accent"
+                    />
+                    <span className="text-[10px] text-gray-500">cm</span>
+                    <span className="text-[10px] text-gray-500">({Math.max(1, Math.round(tramo.longitud / tramo.espaciado))} uds)</span>
+                    <button
+                      onClick={() => removeTramo(idx)}
+                      className="text-red-400 hover:text-red-300 text-xs ml-auto"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                ))}
+                <div className="text-[10px] text-gray-500 flex justify-between">
+                  <span>Total tramos: {sumaTramos.toFixed(2)}m</span>
+                  {Math.abs(sumaTramos - longTotal) > 0.01 && (
+                    <span className="text-amber-400">Viga: {longTotal}m (dif: {(sumaTramos - longTotal).toFixed(2)}m)</span>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        );
+      })()}
 
       {/* Armadura por cara — muros */}
       {tipo === "muro" && (() => {
