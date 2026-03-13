@@ -12,6 +12,54 @@ import {
 } from "@/lib/storage";
 import SyncIndicator from "@/components/SyncIndicator";
 
+const PESOS_BARRAS = [
+  { d: 6, kgm: 0.22, kg12: 2.64 },
+  { d: 8, kgm: 0.40, kg12: 4.80 },
+  { d: 10, kgm: 0.62, kg12: 7.44 },
+  { d: 12, kgm: 0.89, kg12: 10.68 },
+  { d: 14, kgm: 1.21, kg12: 14.52 },
+  { d: 16, kgm: 1.58, kg12: 18.96 },
+  { d: 20, kgm: 2.47, kg12: 29.64 },
+  { d: 25, kgm: 3.85, kg12: 46.20 },
+  { d: 32, kgm: 6.31, kg12: 75.72 },
+];
+
+function TablaPesosHome() {
+  const [abierto, setAbierto] = useState(false);
+  return (
+    <div className="mt-3 flex justify-center">
+      <button
+        onClick={() => setAbierto(!abierto)}
+        className="text-gray-400 hover:text-accent transition-colors text-sm px-3 py-1 border border-gray-700 rounded-lg hover:border-accent"
+      >
+        Tabla de pesos barras 12m
+      </button>
+      {abierto && (
+        <div className="absolute mt-9 z-50 bg-surface border border-border rounded-lg shadow-xl p-4">
+          <table className="text-sm">
+            <thead>
+              <tr className="text-gray-400 border-b border-border">
+                <th className="text-left py-1.5 pr-6">&#x2300; mm</th>
+                <th className="text-right py-1.5 pr-6">kg/m</th>
+                <th className="text-right py-1.5">kg/barra 12m</th>
+              </tr>
+            </thead>
+            <tbody>
+              {PESOS_BARRAS.map((r) => (
+                <tr key={r.d} className="border-b border-border/50 hover:bg-surface-light">
+                  <td className="py-1.5 pr-6 font-medium text-foreground">{r.d}</td>
+                  <td className="text-right py-1.5 pr-6 text-gray-300">{r.kgm.toFixed(2)}</td>
+                  <td className="text-right py-1.5 text-accent font-bold">{r.kg12.toFixed(2)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function Home() {
   const router = useRouter();
   const [proyectos, setProyectos] = useState<Proyecto[]>([]);
@@ -110,6 +158,7 @@ export default function Home() {
           <div className="absolute top-0 right-0"><SyncIndicator /></div>
           <h1 className="text-5xl font-bold text-accent mb-2">FERRAPP</h1>
           <p className="text-gray-400 text-lg">Optimizador de despiece de ferralla</p>
+          <TablaPesosHome />
         </header>
 
         {/* Crear nueva obra */}

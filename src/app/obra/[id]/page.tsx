@@ -23,6 +23,60 @@ import SelectorElemento from "@/components/SelectorElemento";
 import GeometriaInput from "@/components/GeometriaInput";
 import { generarBarrasDesdeGeometria, getGeometriaDefault, getTipoGeometria } from "@/lib/generadores";
 
+/** Tabla de pesos de barras corrugadas a 12m */
+const PESOS_BARRAS_12M: { d: number; kgm: number; kg12: number }[] = [
+  { d: 6, kgm: 0.22, kg12: 2.64 },
+  { d: 8, kgm: 0.40, kg12: 4.80 },
+  { d: 10, kgm: 0.62, kg12: 7.44 },
+  { d: 12, kgm: 0.89, kg12: 10.68 },
+  { d: 14, kgm: 1.21, kg12: 14.52 },
+  { d: 16, kgm: 1.58, kg12: 18.96 },
+  { d: 20, kgm: 2.47, kg12: 29.64 },
+  { d: 25, kgm: 3.85, kg12: 46.20 },
+  { d: 32, kgm: 6.31, kg12: 75.72 },
+];
+
+function TablaPesosBarras() {
+  const [abierto, setAbierto] = useState(false);
+  return (
+    <div className="relative">
+      <button
+        onClick={() => setAbierto(!abierto)}
+        className="text-gray-400 hover:text-accent transition-colors text-xs px-1.5 py-0.5 border border-gray-700 rounded hover:border-accent"
+        title="Tabla de pesos de barras a 12m"
+      >
+        kg
+      </button>
+      {abierto && (
+        <>
+          <div className="fixed inset-0 z-40" onClick={() => setAbierto(false)} />
+          <div className="absolute top-8 left-0 z-50 bg-surface border border-border rounded-lg shadow-xl p-3 min-w-[260px]">
+            <h3 className="text-xs font-bold text-accent mb-2">Peso barras corrugadas (12m)</h3>
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="text-gray-400 border-b border-border">
+                  <th className="text-left py-1 pr-3">&#x2300; mm</th>
+                  <th className="text-right py-1 pr-3">kg/m</th>
+                  <th className="text-right py-1">kg/barra 12m</th>
+                </tr>
+              </thead>
+              <tbody>
+                {PESOS_BARRAS_12M.map((r) => (
+                  <tr key={r.d} className="border-b border-border/50 hover:bg-surface-light">
+                    <td className="py-1 pr-3 font-medium text-foreground">{r.d}</td>
+                    <td className="text-right py-1 pr-3 text-gray-300">{r.kgm.toFixed(2)}</td>
+                    <td className="text-right py-1 text-accent font-medium">{r.kg12.toFixed(2)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 function generarId() {
   return Math.random().toString(36).substring(2, 9);
 }
@@ -520,6 +574,7 @@ export default function ObraPage({ params }: { params: Promise<{ id: string }> }
             &larr; Mis obras
           </button>
           <h1 className="text-xl font-bold text-accent">FERRAPP</h1>
+          <TablaPesosBarras />
           <SyncIndicator />
           <span className="text-gray-500">|</span>
           <input
