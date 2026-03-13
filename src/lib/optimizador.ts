@@ -136,6 +136,9 @@ function expandirPiezas(
         });
       } else {
         // Pieza mas larga que la barra mas grande -> dividir con solape
+        // Cada pieza intermedia avanza longitudEfectiva = Lmax - solape
+        // El solape ya queda incluido en la posición de inicio de cada pieza
+        // Ej: 15.6m con Lmax=12, solape=0.6 → pieza1: 12m (pos 0→12), pieza2: 4.2m (pos 11.4→15.6)
         const solape = config.solape[barra.diametro] || 0.50;
         const longitudEfectiva = Lmax - solape;
         const numTramos = Math.ceil(longitudReal / longitudEfectiva);
@@ -147,7 +150,9 @@ function expandirPiezas(
             longitudTramo = Lmax;
             restante -= longitudEfectiva;
           } else {
-            longitudTramo = Math.min(restante + solape, Lmax);
+            // Último tramo: solo necesita cubrir el restante
+            // El solape con el tramo anterior ya está incluido en la posición
+            longitudTramo = Math.min(restante, Lmax);
           }
 
           piezas.push({

@@ -452,14 +452,28 @@ function generarBarrasLineal(g: GeometriaElemento, subtipo?: string): BarraBase[
   const espEstribos = g.espaciado || 0.15;
   const diam = getDiametrosPlantilla(subtipo);
   const barras: BarraBase[] = [];
+  const plantilla = subtipo ? getPlantilla(subtipo) : null;
 
-  // Diametros referencia
+  // Zapata corrida: barras "a lo largo" + "a lo ancho" (sin estribos cerrados)
+  if (subtipo === "zapata_corrida") {
+    const dLargo = diam["Inferior a lo largo"] || 12;
+    const dAncho = diam["Inferior a lo ancho"] || 10;
+    const dSuperior = diam["Superior a lo largo"] || 10;
+    const cantLargo = plantilla?.barrasDefault.find(b => b.etiqueta === "Inferior a lo largo")?.cantidad || 4;
+    const cantSuperior = plantilla?.barrasDefault.find(b => b.etiqueta === "Superior a lo largo")?.cantidad || 2;
+    const cantAncho = Math.round(longitud / espEstribos);
+
+    barras.push({ longitud: +longitud.toFixed(2), diametro: dLargo, cantidad: cantLargo, etiqueta: "Inferior a lo largo" });
+    barras.push({ longitud: +(secAncho - 0.10).toFixed(2), diametro: dAncho, cantidad: cantAncho, etiqueta: "Inferior a lo ancho" });
+    barras.push({ longitud: +longitud.toFixed(2), diametro: dSuperior, cantidad: cantSuperior, etiqueta: "Superior a lo largo" });
+    return barras;
+  }
+
+  // Vigas/zunchos: barras arriba/abajo + estribos cerrados
   const dAbajo = diam["Barras abajo"] || 16;
   const dArriba = diam["Barras arriba"] || 12;
   const dEstribo = diam["Estribos"] || 8;
 
-  // Cantidades de barras longitudinales: usar las de la plantilla
-  const plantilla = subtipo ? getPlantilla(subtipo) : null;
   const cantAbajo = plantilla?.barrasDefault.find(b => b.etiqueta === "Barras abajo")?.cantidad || 3;
   const cantArriba = plantilla?.barrasDefault.find(b => b.etiqueta === "Barras arriba")?.cantidad || 2;
 

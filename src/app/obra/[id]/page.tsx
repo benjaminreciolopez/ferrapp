@@ -31,6 +31,7 @@ function generarId() {
 const ETIQUETAS_LONGITUDINALES = [
   "Barras abajo", "Barras arriba", "Barras centrales", "Barras longitudinales",
   "Barras principales", "Barras de piel", "Refuerzo negativo", "Portaestribos",
+  "Inferior a lo largo", "Superior a lo largo",
 ];
 
 /** Determina si una barra es longitudinal (vs estribo) */
@@ -39,7 +40,8 @@ function esBarraLongitudinal(etiqueta: string): boolean {
 }
 
 /** Aplica el multiplicador de tramos para elementos lineales:
- *  - Barras longitudinales: multiplica longitud (la viga es continua)
+ *  - Barras longitudinales: (mult-1) tramos con solape + 1 tramo final sin solape
+ *    Ej: 4 tramos de 3.9m con solape 0.60m → 3 uds de 4.50m + 1 ud de 3.90m por barra
  *  - Estribos: multiplica cantidad (cada tramo tiene sus estribos)
  *  Para otros tipos de elemento, multiplica cantidad de todo.
  */
@@ -47,7 +49,8 @@ function aplicarMultiplicador(
   barras: BarraNecesaria[],
   mult: number,
   esLineal: boolean,
-  nombreElemento: string
+  nombreElemento: string,
+  solapes?: Record<number, number>
 ): BarraNecesaria[] {
   if (mult <= 1) {
     return barras.map((b, i) => ({
@@ -55,21 +58,36 @@ function aplicarMultiplicador(
       etiqueta: b.etiqueta || `${nombreElemento} - Pieza ${i + 1}`,
     }));
   }
-  return barras.map((b, i) => {
+  return barras.flatMap((b, i) => {
     if (esLineal && esBarraLongitudinal(b.etiqueta)) {
-      // Longitudinales: longitud total = longitud_tramo × tramos
-      return {
+      // Longitudinales: (mult-1) tramos con solape + 1 tramo final sin solape
+      const solape = solapes?.[b.diametro] || 0.50;
+      const tramosConSolape = mult - 1;
+      const resultado: BarraNecesaria[] = [];
+      // Tramos con solape (uniones)
+      if (tramosConSolape > 0) {
+        resultado.push({
+          ...b,
+          longitud: +(b.longitud + solape).toFixed(2),
+          cantidad: b.cantidad * tramosConSolape,
+          etiqueta: b.etiqueta || `${nombreElemento} - Pieza ${i + 1}`,
+        });
+      }
+      // Último tramo sin solape
+      resultado.push({
         ...b,
-        longitud: +(b.longitud * mult).toFixed(2),
-        etiqueta: b.etiqueta || `${nombreElemento} - Pieza ${i + 1}`,
-      };
+        longitud: b.longitud,
+        cantidad: b.cantidad,
+        etiqueta: (b.etiqueta || `${nombreElemento} - Pieza ${i + 1}`) + " (extremo)",
+      });
+      return resultado;
     } else {
       // Estribos o elementos no lineales: multiplicar cantidad
-      return {
+      return [{
         ...b,
         cantidad: b.cantidad * mult,
         etiqueta: b.etiqueta || `${nombreElemento} - Pieza ${i + 1}`,
-      };
+      }];
     }
   });
 }
@@ -275,7 +293,7 @@ export default function ObraPage({ params }: { params: Promise<{ id: string }> }
     const mult = elemento.cantidad || 1;
     const tipoGeo = getTipoGeometria(elemento.categoria || "libre", elemento.subtipo);
     const esLineal = tipoGeo === "lineal";
-    const barrasConEtiqueta = aplicarMultiplicador(barrasValidas, mult, esLineal, elemento.nombre);
+    const barrasConEtiqueta = aplicarMultiplicador(barrasValidas, mult, esLineal, elemento.nombre, config.solape);
 
     const sobrantesDisp = getSobrantesDisponibles();
     const res = optimizarCortes(barrasConEtiqueta, config, sobrantesDisp);
@@ -304,7 +322,7 @@ export default function ObraPage({ params }: { params: Promise<{ id: string }> }
       const mult = el.cantidad || 1;
       const tipoGeo = getTipoGeometria(el.categoria || "libre", el.subtipo);
       const esLineal = tipoGeo === "lineal";
-      const barrasConEtiqueta = aplicarMultiplicador(barrasValidas, mult, esLineal, el.nombre);
+      const barrasConEtiqueta = aplicarMultiplicador(barrasValidas, mult, esLineal, el.nombre, config.solape);
 
       // Sobrantes de elementos anteriores
       const sobrantesDisp: Sobrante[] = [];
@@ -346,7 +364,7 @@ export default function ObraPage({ params }: { params: Promise<{ id: string }> }
       const mult = el.cantidad || 1;
       const tipoGeo = getTipoGeometria(el.categoria || "libre", el.subtipo);
       const esLineal = tipoGeo === "lineal";
-      const barrasConEtiqueta = aplicarMultiplicador(barrasValidas, mult, esLineal, el.nombre);
+      const barrasConEtiqueta = aplicarMultiplicador(barrasValidas, mult, esLineal, el.nombre, nuevaConfig.solape);
 
       const sobrantesDisp: Sobrante[] = [];
       if (usarSobrantes) {
@@ -835,6 +853,7 @@ export default function ObraPage({ params }: { params: Promise<{ id: string }> }
                     const cantUI = elemento.cantidad || 1;
                     const longTramo = elemento.geometria?.lados[0]?.longitud || 0;
                     const longTotal = esLinealUI && cantUI > 1 ? +(longTramo * cantUI).toFixed(2) : 0;
+                    const numUniones = cantUI > 1 ? cantUI - 1 : 0;
                     return (
                   <div className="flex flex-col gap-1.5 mt-2 px-1">
                     <div className="flex items-center gap-4">
@@ -850,7 +869,7 @@ export default function ObraPage({ params }: { params: Promise<{ id: string }> }
                     </label>
                     {esLinealUI && cantUI > 1 && (
                       <span className="text-xs text-blue-400 font-medium">
-                        Longitud total: {longTotal}m ({cantUI} tramos de {longTramo}m)
+                        {cantUI} tramos de {longTramo}m — {numUniones} uniones con solape
                       </span>
                     )}
                     <label className="flex items-center gap-1.5 text-xs text-gray-400">

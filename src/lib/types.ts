@@ -214,6 +214,7 @@ export const SUBTIPO_GEOMETRIA_OVERRIDE: Record<string, TipoGeometria> = {
   pilar_circular: "pilar",
   muro_contencion: "muro",
   viga_riostra: "lineal",
+  zapata_corrida: "lineal",
 };
 
 /** Un elemento estructural dentro del proyecto */
